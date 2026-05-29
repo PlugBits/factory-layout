@@ -39,6 +39,7 @@ type ProjectFile = {
     width: number;
     depth: number;
     grid: number;
+    majorGrid?: number;
   };
   items: LayoutItem[];
 };
@@ -117,7 +118,7 @@ function downloadBlob(blob: Blob, fileName: string) {
 function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [orbitTargetMode, setOrbitTargetMode] = useState<OrbitTargetMode>("factory");
-  const [factory, setFactory] = useState({ width: 30, depth: 18, grid: 1 });
+  const [factory, setFactory] = useState({ width: 30, depth: 18, grid: 1, majorGrid: 4 });
   const [category, setCategory] = useState<Category>("machine");
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0].id);
   const [items, setItems] = useState<LayoutItem[]>([]);
@@ -286,7 +287,7 @@ function App() {
       window.alert("JSON形式が正しくありません。");
       return;
     }
-    setFactory(project.factory);
+    setFactory({ majorGrid: 4, ...project.factory });
     setItems(project.items);
     setSelectedId(null);
   };
@@ -312,6 +313,7 @@ function App() {
           <label>幅 m<input type="number" value={factory.width} min={5} step={1} onChange={(event) => setFactory({ ...factory, width: Number(event.target.value) })} /></label>
           <label>奥行 m<input type="number" value={factory.depth} min={5} step={1} onChange={(event) => setFactory({ ...factory, depth: Number(event.target.value) })} /></label>
           <label>グリッド m<input type="number" value={factory.grid} min={0.25} step={0.25} onChange={(event) => setFactory({ ...factory, grid: Number(event.target.value) })} /></label>
+          <label>強調グリッド m<input type="number" value={factory.majorGrid} min={1} step={1} onChange={(event) => setFactory({ ...factory, majorGrid: Number(event.target.value) })} /></label>
         </section>
 
         <section className="panel">
@@ -370,7 +372,18 @@ function App() {
                 style={{
                   width: factory.width * pxPerMeter,
                   height: factory.depth * pxPerMeter,
-                  backgroundSize: `${factory.grid * pxPerMeter}px ${factory.grid * pxPerMeter}px`
+                  backgroundImage: `
+                    linear-gradient(#94a3b8 1.5px, transparent 1.5px),
+                    linear-gradient(90deg, #94a3b8 1.5px, transparent 1.5px),
+                    linear-gradient(#dbe3ee 1px, transparent 1px),
+                    linear-gradient(90deg, #dbe3ee 1px, transparent 1px)
+                  `,
+                  backgroundSize: `
+                    ${Math.max(factory.grid, factory.majorGrid || 4) * pxPerMeter}px ${Math.max(factory.grid, factory.majorGrid || 4) * pxPerMeter}px,
+                    ${Math.max(factory.grid, factory.majorGrid || 4) * pxPerMeter}px ${Math.max(factory.grid, factory.majorGrid || 4) * pxPerMeter}px,
+                    ${factory.grid * pxPerMeter}px ${factory.grid * pxPerMeter}px,
+                    ${factory.grid * pxPerMeter}px ${factory.grid * pxPerMeter}px
+                  `
                 }}
                 onPointerMove={moveDrag}
                 onPointerUp={endDrag}
