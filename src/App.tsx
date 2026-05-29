@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Box, Download, Eye, Grid2X2, RotateCw, Save, Upload } from "lucide-react";
+import { Box, Download, Eye, Grid2X2, RotateCw, Save, Upload, ZoomIn, ZoomOut } from "lucide-react";
 import { toPng } from "html-to-image";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -121,11 +121,13 @@ function App() {
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0].id);
   const [items, setItems] = useState<LayoutItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
   const [drag, setDrag] = useState<{ id: string; dx: number; dy: number } | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
-  const pxPerMeter = useMemo(() => Math.max(22, Math.min(52, 960 / factory.width)), [factory.width]);
+  const basePxPerMeter = useMemo(() => Math.max(22, Math.min(52, 960 / factory.width)), [factory.width]);
+  const pxPerMeter = basePxPerMeter * zoom;
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0];
 
@@ -187,6 +189,10 @@ function App() {
     if (!selectedItem) return;
     const next = ((selectedItem.rotation + 90) % 360) as LayoutItem["rotation"];
     updateItem(selectedItem.id, { rotation: next });
+  };
+
+  const changeZoom = (delta: number) => {
+    setZoom((current) => clamp(Number((current + delta).toFixed(2)), 0.5, 2.5));
   };
 
   const startDrag = (event: React.PointerEvent, item: LayoutItem) => {
@@ -276,6 +282,13 @@ function App() {
 
       <main className="workspace">
         <header className="topbar">
+          {viewMode === "2d" ? (
+            <div className="zoom-controls">
+              <button onClick={() => changeZoom(-0.1)} disabled={zoom <= 0.5} aria-label="ズームアウト"><ZoomOut size={16} /></button>
+              <button className="zoom-value" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
+              <button onClick={() => changeZoom(0.1)} disabled={zoom >= 2.5} aria-label="ズームイン"><ZoomIn size={16} /></button>
+            </div>
+          ) : null}
           {viewMode === "3d" ? (
             <div className="orbit-toggle">
               <button className={orbitTargetMode === "factory" ? "active" : ""} onClick={() => setOrbitTargetMode("factory")}>全体中心</button>
@@ -566,6 +579,10 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory
 function snap(value: number, grid: number) {
   if (!grid) return value;
   return Number((Math.round(value / grid) * grid).toFixed(3));
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function getArrowMovement(code: string) {

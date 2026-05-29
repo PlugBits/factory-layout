@@ -203,6 +203,24 @@ select {
   font-weight: 800;
 }
 
+.zoom-controls {
+  display: inline-grid;
+  grid-template-columns: 34px 64px 34px;
+  gap: 4px;
+  margin-right: auto;
+}
+
+.zoom-controls button {
+  border-radius: 4px;
+  padding: 5px 8px;
+}
+
+.zoom-controls .zoom-value {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .topbar button.view-button.active {
   border-color: #2563eb;
   background: #dbeafe;
