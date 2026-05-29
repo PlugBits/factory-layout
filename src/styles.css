@@ -142,7 +142,9 @@ select {
 
 .template-list {
   display: grid;
+  align-content: start;
   gap: 6px;
+  grid-auto-rows: max-content;
   max-height: 320px;
   overflow: auto;
   margin: 8px 0;
@@ -264,6 +266,7 @@ select {
 .board-wrap {
   overflow: auto;
   padding: 24px;
+  user-select: none;
 }
 
 .board-wrap.panning {

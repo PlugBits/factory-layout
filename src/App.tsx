@@ -322,8 +322,9 @@ function App() {
 
   const movePan = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!panDrag) return;
-    event.currentTarget.scrollLeft = panDrag.scrollLeft - (event.clientX - panDrag.x);
-    event.currentTarget.scrollTop = panDrag.scrollTop - (event.clientY - panDrag.y);
+    event.preventDefault();
+    event.currentTarget.scrollLeft -= event.movementX;
+    event.currentTarget.scrollTop -= event.movementY;
   };
 
   const endPan = (event: React.PointerEvent<HTMLDivElement>) => {
