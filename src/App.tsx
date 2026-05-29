@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Box, Download, Eye, Grid2X2, RotateCw, Save, Upload, ZoomIn, ZoomOut } from "lucide-react";
+import { Box, Copy, Download, Eye, Grid2X2, RotateCw, Save, Trash2, Upload, ZoomIn, ZoomOut } from "lucide-react";
 import { toPng } from "html-to-image";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -62,6 +62,7 @@ const templates: EquipmentTemplate[] = [
   { id: "pallet", name: "パレット置場", category: "logistics", width: 2.4, depth: 1.4, height: 1.2, color: "#c28a4a", icon: "PL" },
   { id: "cart", name: "台車置場", category: "logistics", width: 2.0, depth: 1.2, height: 1.0, color: "#c69a62", icon: "台" },
   { id: "forklift-aisle", name: "フォークリフト通路", category: "logistics", width: 8.0, depth: 3.0, height: 0.05, color: "#facc15", icon: "通" },
+  { id: "walkway", name: "歩行通路", category: "logistics", width: 6.0, depth: 1.2, height: 0.05, color: "#22c55e", icon: "歩" },
   { id: "safety-fence", name: "安全柵", category: "safety", width: 4.0, depth: 0.2, height: 1.2, color: "#f59e0b", icon: "柵" },
   { id: "restricted", name: "立入禁止エリア", category: "safety", width: 3.0, depth: 2.0, height: 0.05, color: "#ef4444", icon: "禁" },
   { id: "fire-ext", name: "消火器", category: "safety", width: 0.4, depth: 0.4, height: 1.0, color: "#dc2626", icon: "火" },
@@ -121,6 +122,7 @@ function App() {
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0].id);
   const [items, setItems] = useState<LayoutItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sizeEditId, setSizeEditId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [drag, setDrag] = useState<{ id: string; dx: number; dy: number } | null>(null);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
@@ -130,7 +132,12 @@ function App() {
   const basePxPerMeter = useMemo(() => Math.max(22, Math.min(52, 960 / factory.width)), [factory.width]);
   const pxPerMeter = basePxPerMeter * zoom;
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
+  const sizeEditItem = items.find((item) => item.id === sizeEditId) ?? null;
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0];
+  const renderItems = useMemo(
+    () => items.map((item, index) => ({ item, itemNumber: index + 1 })).sort((left, right) => Number(isAreaItem(right.item)) - Number(isAreaItem(left.item))),
+    [items]
+  );
 
   const addSelectedTemplate = () => {
     const template = selectedTemplate;
@@ -184,6 +191,24 @@ function App() {
     if (!selectedId) return;
     setItems((current) => current.filter((item) => item.id !== selectedId));
     setSelectedId(null);
+  };
+
+  const deleteItem = (id: string) => {
+    setItems((current) => current.filter((item) => item.id !== id));
+    if (selectedId === id) setSelectedId(null);
+    if (sizeEditId === id) setSizeEditId(null);
+  };
+
+  const duplicateItem = (source: LayoutItem) => {
+    const id = makeId("item");
+    const copy = {
+      ...source,
+      id,
+      x: snap(clamp(source.x + (factory.grid || 1), 0, Math.max(0, factory.width - source.width)), factory.grid),
+      y: snap(clamp(source.y + (factory.grid || 1), 0, Math.max(0, factory.depth - source.depth)), factory.grid)
+    };
+    setItems((current) => [...current, copy]);
+    setSelectedId(id);
   };
 
   const rotateSelected = () => {
@@ -352,18 +377,16 @@ function App() {
               >
                 <div className="dimension dim-width">{factory.width} m</div>
                 <div className="dimension dim-depth">{factory.depth} m</div>
-                {items.map((item, index) => (
+                {renderItems.map(({ item, itemNumber }) => (
                   <LayoutItemView
                     key={item.id}
                     item={item}
-                    itemNumber={index + 1}
+                    itemNumber={itemNumber}
                     selected={item.id === selectedId}
+                    area={isAreaItem(item)}
                     pxPerMeter={pxPerMeter}
                     onPointerDown={(event) => startDrag(event, item)}
-                    onDoubleClick={() => {
-                      const name = window.prompt("設備名を入力してください", item.name);
-                      if (name !== null) updateItem(item.id, { name });
-                    }}
+                    onDoubleClick={() => setSizeEditId(item.id)}
                   />
                 ))}
               </div>
@@ -376,7 +399,7 @@ function App() {
             <div className="panel-title">配置済み要素</div>
             <div className="placed-list">
               {items.length ? items.map((item, index) => (
-                <button
+                <div
                   key={item.id}
                   className={item.id === selectedId ? "placed-item selected" : "placed-item"}
                   onClick={() => setSelectedId(item.id)}
@@ -387,7 +410,27 @@ function App() {
                     <strong>{item.name}</strong>
                     <small>X {item.x} / Y {item.y}</small>
                   </span>
-                </button>
+                  <span className="placed-actions">
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        duplicateItem(item);
+                      }}
+                      aria-label="複製"
+                    >
+                      <Copy size={14} />
+                    </button>
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        deleteItem(item.id);
+                      }}
+                      aria-label="削除"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </span>
+                </div>
               )) : (
                 <p>配置済み要素はありません</p>
               )}
@@ -397,6 +440,7 @@ function App() {
             {selectedItem ? (
               <>
                 <label>名称<input value={selectedItem.name} onChange={(event) => updateItem(selectedItem.id, { name: event.target.value })} /></label>
+                <label>アイコン<input value={selectedItem.icon} maxLength={6} onChange={(event) => updateItem(selectedItem.id, { icon: event.target.value })} /></label>
                 <label>X m<input type="number" value={selectedItem.x} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { x: Number(event.target.value) })} /></label>
                 <label>Y m<input type="number" value={selectedItem.y} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { y: Number(event.target.value) })} /></label>
                 <label>幅 m<input type="number" value={selectedItem.width} step={0.1} onChange={(event) => updateItem(selectedItem.id, { width: Number(event.target.value) })} /></label>
@@ -426,28 +470,43 @@ function App() {
           </aside>
         </section>
       </main>
+      {sizeEditItem ? (
+        <div className="modal-backdrop" onMouseDown={() => setSizeEditId(null)}>
+          <div className="size-modal" onMouseDown={(event) => event.stopPropagation()}>
+            <header>
+              <strong>サイズ変更</strong>
+              <button onClick={() => setSizeEditId(null)}>閉じる</button>
+            </header>
+            <label>幅 X m<input type="number" value={sizeEditItem.width} min={factory.grid} step={factory.grid} onChange={(event) => updateItem(sizeEditItem.id, { width: snapSize(Number(event.target.value), factory.grid) })} /></label>
+            <label>奥行 Y m<input type="number" value={sizeEditItem.depth} min={factory.grid} step={factory.grid} onChange={(event) => updateItem(sizeEditItem.id, { depth: snapSize(Number(event.target.value), factory.grid) })} /></label>
+            <label>高さ Z m<input type="number" value={sizeEditItem.height} min={0.05} step={factory.grid} onChange={(event) => updateItem(sizeEditItem.id, { height: snapSize(Number(event.target.value), factory.grid) })} /></label>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function LayoutItemView({ item, itemNumber, selected, pxPerMeter, onPointerDown, onDoubleClick }: {
+function LayoutItemView({ item, itemNumber, selected, area, pxPerMeter, onPointerDown, onDoubleClick }: {
   item: LayoutItem;
   itemNumber: number;
   selected: boolean;
+  area: boolean;
   pxPerMeter: number;
   onPointerDown: (event: React.PointerEvent) => void;
   onDoubleClick: () => void;
 }) {
   return (
     <div
-      className={`layout-item ${selected ? "selected" : ""}`}
+      className={`layout-item ${selected ? "selected" : ""} ${area ? "area-item" : ""}`}
       style={{
         left: item.x * pxPerMeter,
         top: item.y * pxPerMeter,
         width: item.width * pxPerMeter,
         height: item.depth * pxPerMeter,
         backgroundColor: item.color,
-        transform: `rotate(${item.rotation}deg)`
+        transform: `rotate(${item.rotation}deg)`,
+        zIndex: area ? 1 : 5
       }}
       onPointerDown={onPointerDown}
       onDoubleClick={onDoubleClick}
@@ -455,7 +514,7 @@ function LayoutItemView({ item, itemNumber, selected, pxPerMeter, onPointerDown,
       <div className="item-number">{String(itemNumber).padStart(2, "0")}</div>
       <div className="item-icon">{item.icon}</div>
       <div className="item-name">{item.name}</div>
-      <div className="item-size">{item.width} x {item.depth}m</div>
+      <div className="item-size">{item.width} x {item.depth} x {item.height}m</div>
     </div>
   );
 }
@@ -606,6 +665,15 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory
 function snap(value: number, grid: number) {
   if (!grid) return value;
   return Number((Math.round(value / grid) * grid).toFixed(3));
+}
+
+function snapSize(value: number, grid: number) {
+  const snapped = snap(value, grid || 0.1);
+  return Number(Math.max(grid || 0.1, snapped).toFixed(3));
+}
+
+function isAreaItem(item: LayoutItem) {
+  return item.height <= 0.1 || item.templateId === "crane" || item.templateId.includes("aisle") || item.templateId === "restricted" || item.templateId === "walkway";
 }
 
 function clamp(value: number, min: number, max: number) {

@@ -288,6 +288,22 @@ select {
   box-shadow: 0 1px 4px rgba(15, 23, 42, 0.2);
 }
 
+.layout-item.area-item {
+  border: 2px dashed currentColor;
+  color: #0f172a;
+  opacity: 0.42;
+  box-shadow: none;
+}
+
+.layout-item.area-item .item-name,
+.layout-item.area-item .item-size {
+  color: #0f172a;
+}
+
+.layout-item.area-item .item-icon {
+  color: #0f172a;
+}
+
 .item-number {
   position: absolute;
   top: 3px;
@@ -381,13 +397,16 @@ select {
 
 .placed-item {
   display: grid;
-  grid-template-columns: 32px 18px minmax(0, 1fr);
+  grid-template-columns: 32px 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   min-height: 44px;
   border-radius: 5px;
+  border: 1px solid #c7d0df;
+  background: #fff;
   padding: 6px 7px;
   text-align: left;
+  cursor: pointer;
 }
 
 .placed-item.selected {
@@ -431,6 +450,20 @@ select {
   font-size: 11px;
 }
 
+.placed-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.placed-actions button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  min-height: 28px;
+  border-radius: 4px;
+  padding: 0;
+}
+
 .field-title {
   margin-bottom: 6px;
   color: #475569;
@@ -458,4 +491,39 @@ select {
 .color-swatch.active {
   outline: 3px solid #0f172a;
   outline-offset: 2px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.size-modal {
+  width: min(360px, calc(100vw - 32px));
+  border: 1px solid #c7d0df;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.28);
+  padding: 14px;
+}
+
+.size-modal header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.size-modal header strong {
+  color: #172033;
+  font-size: 15px;
+}
+
+.size-modal header button {
+  border-radius: 4px;
+  padding: 4px 9px;
 }
