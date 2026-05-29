@@ -85,6 +85,21 @@ const categoryLabels: Record<Category, string> = {
   safety: "安全"
 };
 
+const itemColorPalette = [
+  "#2563eb",
+  "#0f766e",
+  "#16a34a",
+  "#ca8a04",
+  "#ea580c",
+  "#dc2626",
+  "#9333ea",
+  "#4f46e5",
+  "#0891b2",
+  "#64748b",
+  "#78716c",
+  "#111827"
+];
+
 function makeId(prefix: string) {
   return `${prefix}-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`;
 }
@@ -116,10 +131,11 @@ function App() {
 
   const addSelectedTemplate = () => {
     const template = selectedTemplate;
+    const id = makeId("item");
     setItems((current) => [
       ...current,
       {
-        id: makeId("item"),
+        id,
         templateId: template.id,
         name: template.name,
         x: 1,
@@ -132,11 +148,34 @@ function App() {
         icon: template.icon
       }
     ]);
+    setSelectedId(id);
   };
 
   const updateItem = (id: string, patch: Partial<LayoutItem>) => {
     setItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
   };
+
+  const moveItemTo = (item: LayoutItem, rawX: number, rawY: number) => {
+    const x = snap(Math.max(0, Math.min(factory.width - item.width, rawX)), factory.grid);
+    const y = snap(Math.max(0, Math.min(factory.depth - item.depth, rawY)), factory.grid);
+    updateItem(item.id, { x, y });
+  };
+
+  useEffect(() => {
+    const keyDown = (event: KeyboardEvent) => {
+      if (viewMode !== "2d" || !selectedId || drag || isFormField(event.target)) return;
+      const movement = getArrowMovement(event.code);
+      if (!movement) return;
+      event.preventDefault();
+      const item = items.find((entry) => entry.id === selectedId);
+      if (!item) return;
+      const step = factory.grid || 1;
+      moveItemTo(item, item.x + movement.dx * step, item.y + movement.dy * step);
+    };
+
+    window.addEventListener("keydown", keyDown);
+    return () => window.removeEventListener("keydown", keyDown);
+  }, [drag, factory, items, selectedId, viewMode]);
 
   const deleteSelected = () => {
     if (!selectedId) return;
@@ -169,9 +208,7 @@ function App() {
     if (!item) return;
     const rawX = (event.clientX - rect.left) / pxPerMeter - drag.dx;
     const rawY = (event.clientY - rect.top) / pxPerMeter - drag.dy;
-    const x = snap(Math.max(0, Math.min(factory.width - item.width, rawX)), factory.grid);
-    const y = snap(Math.max(0, Math.min(factory.depth - item.depth, rawY)), factory.grid);
-    updateItem(item.id, { x, y });
+    moveItemTo(item, rawX, rawY);
   };
 
   const endDrag = (event: React.PointerEvent) => {
@@ -296,6 +333,26 @@ function App() {
           )}
 
           <aside className="properties">
+            <div className="panel-title">配置済み要素</div>
+            <div className="placed-list">
+              {items.length ? items.map((item, index) => (
+                <button
+                  key={item.id}
+                  className={item.id === selectedId ? "placed-item selected" : "placed-item"}
+                  onClick={() => setSelectedId(item.id)}
+                >
+                  <span className="placed-number">{String(index + 1).padStart(2, "0")}</span>
+                  <span className="placed-color" style={{ backgroundColor: item.color }} />
+                  <span className="placed-main">
+                    <strong>{item.name}</strong>
+                    <small>X {item.x} / Y {item.y}</small>
+                  </span>
+                </button>
+              )) : (
+                <p>配置済み要素はありません</p>
+              )}
+            </div>
+
             <div className="panel-title">選択中</div>
             {selectedItem ? (
               <>
@@ -308,6 +365,20 @@ function App() {
                 <label>回転<select value={selectedItem.rotation} onChange={(event) => updateItem(selectedItem.id, { rotation: Number(event.target.value) as LayoutItem["rotation"] })}>
                   {[0, 90, 180, 270].map((angle) => <option key={angle} value={angle}>{angle}°</option>)}
                 </select></label>
+                <div className="color-panel">
+                  <div className="field-title">色</div>
+                  <div className="color-grid">
+                    {itemColorPalette.map((color) => (
+                      <button
+                        key={color}
+                        className={selectedItem.color.toLowerCase() === color.toLowerCase() ? "color-swatch active" : "color-swatch"}
+                        style={{ backgroundColor: color }}
+                        onClick={() => updateItem(selectedItem.id, { color })}
+                        aria-label={`色 ${color}`}
+                      />
+                    ))}
+                  </div>
+                </div>
               </>
             ) : (
               <p>設備をクリックして選択</p>
@@ -495,6 +566,14 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory
 function snap(value: number, grid: number) {
   if (!grid) return value;
   return Number((Math.round(value / grid) * grid).toFixed(3));
+}
+
+function getArrowMovement(code: string) {
+  if (code === "ArrowLeft") return { dx: -1, dy: 0 };
+  if (code === "ArrowRight") return { dx: 1, dy: 0 };
+  if (code === "ArrowUp") return { dx: 0, dy: -1 };
+  if (code === "ArrowDown") return { dx: 0, dy: 1 };
+  return null;
 }
 
 function isWalkKey(code: string) {
