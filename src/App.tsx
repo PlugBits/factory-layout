@@ -6,7 +6,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 type Category = "machine" | "logistics" | "work" | "building" | "utility" | "safety";
 type ViewMode = "2d" | "3d";
-type OrbitTargetMode = "factory" | "selected";
+type OrbitTargetMode = "factory" | "selected" | "walk";
 
 type EquipmentTemplate = {
   id: string;
@@ -245,6 +245,9 @@ function App() {
               <button className={orbitTargetMode === "selected" ? "active" : ""} onClick={() => setOrbitTargetMode("selected")} disabled={!selectedItem}>選択中心</button>
             </div>
           ) : null}
+          {viewMode === "3d" ? (
+            <button className={orbitTargetMode === "walk" ? "active view-button" : "view-button"} onClick={() => setOrbitTargetMode("walk")}>歩行</button>
+          ) : null}
           <button onClick={rotateSelected} disabled={!selectedItem}><RotateCw size={16} />回転</button>
           <button onClick={deleteSelected} disabled={!selectedItem}>削除</button>
           <button onClick={saveJson}><Save size={16} />JSON保存</button>
@@ -367,10 +370,24 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     mount.appendChild(renderer.domElement);
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    const orbitTarget = getOrbitTarget(factory, items, selectedId, orbitTargetMode);
-    controls.target.set(orbitTarget.x, orbitTarget.y, orbitTarget.z);
-    controls.update();
+    const controls = orbitTargetMode === "walk" ? null : new OrbitControls(camera, renderer.domElement);
+    const walkKeys = new Set<string>();
+    const walkState = {
+      dragging: false,
+      yaw: Math.PI,
+      pitch: 0,
+      speed: 4.2
+    };
+
+    if (controls) {
+      const orbitTarget = getOrbitTarget(factory, items, selectedId, orbitTargetMode);
+      controls.target.set(orbitTarget.x, orbitTarget.y, orbitTarget.z);
+      controls.update();
+    } else {
+      camera.position.set(Math.min(1.5, factory.width * 0.25), 1.6, Math.min(1.5, factory.depth * 0.25));
+      camera.rotation.order = "YXZ";
+      camera.rotation.set(walkState.pitch, walkState.yaw, 0);
+    }
 
     scene.add(new THREE.HemisphereLight("#ffffff", "#94a3b8", 1.7));
     const directional = new THREE.DirectionalLight("#ffffff", 1.6);
@@ -402,27 +419,112 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory
       }
     }
 
+    const keyDown = (event: KeyboardEvent) => {
+      if (isFormField(event.target)) return;
+      if (isWalkKey(event.code)) event.preventDefault();
+      walkKeys.add(event.code);
+    };
+    const keyUp = (event: KeyboardEvent) => {
+      if (isFormField(event.target)) return;
+      if (isWalkKey(event.code)) event.preventDefault();
+      walkKeys.delete(event.code);
+    };
+    const pointerDown = (event: PointerEvent) => {
+      walkState.dragging = true;
+      renderer.domElement.setPointerCapture(event.pointerId);
+    };
+    const pointerMove = (event: PointerEvent) => {
+      if (!walkState.dragging) return;
+      walkState.yaw -= event.movementX * 0.0024;
+      walkState.pitch = THREE.MathUtils.clamp(walkState.pitch - event.movementY * 0.0024, -1.25, 1.25);
+      camera.rotation.set(walkState.pitch, walkState.yaw, 0);
+    };
+    const pointerUp = (event: PointerEvent) => {
+      walkState.dragging = false;
+      if (renderer.domElement.hasPointerCapture(event.pointerId)) {
+        renderer.domElement.releasePointerCapture(event.pointerId);
+      }
+    };
+
+    if (orbitTargetMode === "walk") {
+      window.addEventListener("keydown", keyDown);
+      window.addEventListener("keyup", keyUp);
+      renderer.domElement.addEventListener("pointerdown", pointerDown);
+      renderer.domElement.addEventListener("pointermove", pointerMove);
+      renderer.domElement.addEventListener("pointerup", pointerUp);
+      renderer.domElement.addEventListener("pointercancel", pointerUp);
+    }
+
+    const clock = new THREE.Clock();
     let animation = 0;
     const render = () => {
       animation = requestAnimationFrame(render);
+      if (orbitTargetMode === "walk") {
+        updateWalkCamera(camera, walkKeys, walkState.speed, clock.getDelta(), factory);
+      } else {
+        clock.getDelta();
+      }
       renderer.render(scene, camera);
     };
     render();
 
     return () => {
       cancelAnimationFrame(animation);
-      controls.dispose();
+      controls?.dispose();
+      window.removeEventListener("keydown", keyDown);
+      window.removeEventListener("keyup", keyUp);
+      renderer.domElement.removeEventListener("pointerdown", pointerDown);
+      renderer.domElement.removeEventListener("pointermove", pointerMove);
+      renderer.domElement.removeEventListener("pointerup", pointerUp);
+      renderer.domElement.removeEventListener("pointercancel", pointerUp);
       renderer.dispose();
       mount.innerHTML = "";
     };
   }, [factory, items, selectedId, orbitTargetMode]);
 
-  return <div className="three-preview" ref={mountRef} />;
+  return (
+    <div className="three-preview-wrap">
+      <div className="three-preview" ref={mountRef} />
+      {orbitTargetMode === "walk" ? (
+        <div className="walk-help">W/A/S/D 移動 ・ Shift 速歩き ・ マウスドラッグで視点回転</div>
+      ) : null}
+    </div>
+  );
 }
 
 function snap(value: number, grid: number) {
   if (!grid) return value;
   return Number((Math.round(value / grid) * grid).toFixed(3));
+}
+
+function isWalkKey(code: string) {
+  return ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight", "ShiftLeft", "ShiftRight"].includes(code);
+}
+
+function isFormField(target: EventTarget | null) {
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+}
+
+function updateWalkCamera(camera: THREE.PerspectiveCamera, keys: Set<string>, baseSpeed: number, delta: number, factory: ProjectFile["factory"]) {
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  forward.y = 0;
+  forward.normalize();
+
+  const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+  const movement = new THREE.Vector3();
+  if (keys.has("KeyW") || keys.has("ArrowUp")) movement.add(forward);
+  if (keys.has("KeyS") || keys.has("ArrowDown")) movement.sub(forward);
+  if (keys.has("KeyD") || keys.has("ArrowRight")) movement.add(right);
+  if (keys.has("KeyA") || keys.has("ArrowLeft")) movement.sub(right);
+
+  if (movement.lengthSq() === 0) return;
+  const speed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? baseSpeed * 1.8 : baseSpeed;
+  movement.normalize().multiplyScalar(speed * delta);
+  camera.position.add(movement);
+  camera.position.x = THREE.MathUtils.clamp(camera.position.x, 0.25, Math.max(0.25, factory.width - 0.25));
+  camera.position.y = 1.6;
+  camera.position.z = THREE.MathUtils.clamp(camera.position.z, 0.25, Math.max(0.25, factory.depth - 0.25));
 }
 
 function createEquipmentModel(item: LayoutItem, itemNumber: number) {
