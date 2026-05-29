@@ -272,10 +272,11 @@ function App() {
               >
                 <div className="dimension dim-width">{factory.width} m</div>
                 <div className="dimension dim-depth">{factory.depth} m</div>
-                {items.map((item) => (
+                {items.map((item, index) => (
                   <LayoutItemView
                     key={item.id}
                     item={item}
+                    itemNumber={index + 1}
                     selected={item.id === selectedId}
                     pxPerMeter={pxPerMeter}
                     onPointerDown={(event) => startDrag(event, item)}
@@ -315,8 +316,9 @@ function App() {
   );
 }
 
-function LayoutItemView({ item, selected, pxPerMeter, onPointerDown, onDoubleClick }: {
+function LayoutItemView({ item, itemNumber, selected, pxPerMeter, onPointerDown, onDoubleClick }: {
   item: LayoutItem;
+  itemNumber: number;
   selected: boolean;
   pxPerMeter: number;
   onPointerDown: (event: React.PointerEvent) => void;
@@ -336,6 +338,7 @@ function LayoutItemView({ item, selected, pxPerMeter, onPointerDown, onDoubleCli
       onPointerDown={onPointerDown}
       onDoubleClick={onDoubleClick}
     >
+      <div className="item-number">{String(itemNumber).padStart(2, "0")}</div>
       <div className="item-icon">{item.icon}</div>
       <div className="item-name">{item.name}</div>
       <div className="item-size">{item.width} x {item.depth}m</div>
@@ -385,8 +388,8 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory
     grid.position.set(factory.width / 2, 0.01, factory.depth / 2);
     scene.add(grid);
 
-    for (const item of items) {
-      const model = createEquipmentModel(item);
+    for (const [index, item] of items.entries()) {
+      const model = createEquipmentModel(item, index + 1);
       model.position.set(item.x + item.width / 2, 0, item.y + item.depth / 2);
       model.rotation.y = THREE.MathUtils.degToRad(item.rotation);
       scene.add(model);
@@ -422,164 +425,125 @@ function snap(value: number, grid: number) {
   return Number((Math.round(value / grid) * grid).toFixed(3));
 }
 
-function createEquipmentModel(item: LayoutItem) {
+function createEquipmentModel(item: LayoutItem, itemNumber: number) {
   const group = new THREE.Group();
   const baseColor = new THREE.Color(item.color);
-  const darkColor = baseColor.clone().multiplyScalar(0.55);
-  const lightColor = baseColor.clone().lerp(new THREE.Color("#ffffff"), 0.42);
-
-  const addBox = (
-    name: string,
-    width: number,
-    height: number,
-    depth: number,
-    x: number,
-    y: number,
-    z: number,
-    color: THREE.ColorRepresentation,
-    opacity = 0.9
-  ) => {
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(Math.max(width, 0.03), Math.max(height, 0.03), Math.max(depth, 0.03)),
-      new THREE.MeshLambertMaterial({ color, transparent: opacity < 1, opacity })
-    );
-    mesh.name = name;
-    mesh.position.set(x, y + Math.max(height, 0.03) / 2, z);
-    group.add(mesh);
-    return mesh;
-  };
-
-  const addCylinder = (
-    radius: number,
-    height: number,
-    x: number,
-    y: number,
-    z: number,
-    color: THREE.ColorRepresentation,
-    rotationX = 0
-  ) => {
-    const mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(radius, radius, height, 24),
-      new THREE.MeshLambertMaterial({ color })
-    );
-    mesh.position.set(x, y, z);
-    mesh.rotation.x = rotationX;
-    group.add(mesh);
-    return mesh;
-  };
-
   const w = item.width;
   const d = item.depth;
   const h = Math.max(item.height, 0.05);
   const id = item.templateId;
+  const isArea = h <= 0.1 || id.includes("aisle") || id === "restricted" || id === "crane";
+  const visibleHeight = isArea ? Math.max(h, 0.06) : h;
+  const opacity = isArea ? 0.26 : 0.86;
 
-  if (h <= 0.1 || id.includes("aisle") || id === "restricted" || id === "crane") {
-    addBox("area", w, Math.max(h, 0.04), d, 0, 0, 0, item.color, id === "restricted" ? 0.36 : 0.28);
-    if (id === "crane") {
-      addBox("crane-frame-x1", w, 0.08, 0.08, 0, h, -d / 2, "#2563eb", 0.75);
-      addBox("crane-frame-x2", w, 0.08, 0.08, 0, h, d / 2, "#2563eb", 0.75);
-      addBox("crane-frame-z1", 0.08, 0.08, d, -w / 2, h, 0, "#2563eb", 0.75);
-      addBox("crane-frame-z2", 0.08, 0.08, d, w / 2, h, 0, "#2563eb", 0.75);
-    }
-    return group;
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(w, visibleHeight, d),
+    new THREE.MeshLambertMaterial({
+      color: baseColor,
+      transparent: opacity < 1,
+      opacity
+    })
+  );
+  body.position.set(0, visibleHeight / 2, 0);
+  group.add(body);
+
+  const edge = new THREE.LineSegments(
+    new THREE.EdgesGeometry(body.geometry),
+    new THREE.LineBasicMaterial({ color: baseColor.clone().multiplyScalar(0.42) })
+  );
+  edge.position.copy(body.position);
+  group.add(edge);
+
+  addTopIcon(group, item, itemNumber, w, d, visibleHeight);
+
+  if (id === "crane") {
+    addFrame(group, w, d, h);
   }
 
-  if (id === "machining") {
-    addBox("base", w, h * 0.12, d, 0, 0, 0, darkColor);
-    addBox("body", w * 0.92, h * 0.78, d * 0.9, 0, h * 0.12, 0, lightColor);
-    addBox("door", w * 0.38, h * 0.46, 0.04, -w * 0.16, h * 0.26, -d * 0.46, "#111827", 0.62);
-    addBox("panel", w * 0.16, h * 0.52, d * 0.08, w * 0.39, h * 0.24, -d * 0.44, "#1f2937");
-    addBox("cap", w * 0.78, h * 0.12, d * 0.74, 0, h * 0.86, 0, baseColor);
-    return group;
-  }
-
-  if (id === "nc-lathe" || id === "lathe") {
-    addBox("bed", w, h * 0.28, d * 0.42, 0, 0, 0, darkColor);
-    addBox("headstock", w * 0.26, h * 0.5, d * 0.62, -w * 0.32, h * 0.28, 0, baseColor);
-    addBox("carriage", w * 0.24, h * 0.36, d * 0.5, w * 0.06, h * 0.28, 0, lightColor);
-    addCylinder(Math.min(d, h) * 0.13, w * 0.42, w * 0.12, h * 0.66, 0, "#334155", Math.PI / 2);
-    addBox("panel", w * 0.12, h * 0.38, d * 0.12, w * 0.42, h * 0.36, -d * 0.32, "#1f2937");
-    return group;
-  }
-
-  if (id === "milling") {
-    addBox("base", w * 0.7, h * 0.2, d * 0.72, 0, 0, 0, darkColor);
-    addBox("column", w * 0.22, h * 0.72, d * 0.3, -w * 0.18, h * 0.2, d * 0.05, baseColor);
-    addBox("table", w * 0.82, h * 0.12, d * 0.28, w * 0.1, h * 0.42, -d * 0.08, lightColor);
-    addBox("head", w * 0.28, h * 0.22, d * 0.34, w * 0.12, h * 0.72, -d * 0.08, baseColor);
-    return group;
-  }
-
-  if (id === "drill") {
-    addBox("base", w * 0.84, h * 0.08, d * 0.84, 0, 0, 0, darkColor);
-    addCylinder(Math.min(w, d) * 0.07, h * 0.72, 0, h * 0.42, 0, baseColor);
-    addBox("table", w * 0.58, h * 0.06, d * 0.5, 0, h * 0.38, 0, lightColor);
-    addBox("head", w * 0.44, h * 0.18, d * 0.32, 0, h * 0.78, -d * 0.08, baseColor);
-    return group;
-  }
-
-  if (id === "press") {
-    addBox("left-post", w * 0.16, h * 0.86, d * 0.28, -w * 0.32, h * 0.06, 0, darkColor);
-    addBox("right-post", w * 0.16, h * 0.86, d * 0.28, w * 0.32, h * 0.06, 0, darkColor);
-    addBox("top", w * 0.86, h * 0.18, d * 0.42, 0, h * 0.76, 0, baseColor);
-    addBox("bed", w * 0.82, h * 0.14, d * 0.52, 0, 0, 0, lightColor);
-    addBox("ram", w * 0.42, h * 0.18, d * 0.36, 0, h * 0.5, 0, baseColor);
-    return group;
-  }
-
-  if (id === "rack") {
-    addBox("frame", w, h, d, 0, 0, 0, baseColor, 0.16);
-    for (let i = 0; i < 4; i++) {
-      addBox(`shelf-${i}`, w, 0.05, d, 0, h * (i + 1) / 5, 0, darkColor);
-    }
-    for (const x of [-w / 2, w / 2]) {
-      for (const z of [-d / 2, d / 2]) addBox("post", 0.06, h, 0.06, x, 0, z, darkColor);
-    }
-    return group;
-  }
-
-  if (id === "conveyor") {
-    addBox("belt", w, h * 0.18, d, 0, h * 0.55, 0, "#374151");
-    for (let x = -w / 2 + 0.25; x < w / 2; x += 0.45) {
-      addCylinder(Math.min(d * 0.18, 0.12), d * 0.92, x, h * 0.66, 0, "#9ca3af", Math.PI / 2);
-    }
-    for (const x of [-w * 0.38, w * 0.38]) {
-      addBox("leg", 0.08, h * 0.55, 0.08, x, 0, -d * 0.36, darkColor);
-      addBox("leg", 0.08, h * 0.55, 0.08, x, 0, d * 0.36, darkColor);
-    }
-    return group;
-  }
-
-  if (id === "workbench" || id === "inspection" || id === "packing") {
-    addBox("top", w, h * 0.12, d, 0, h * 0.72, 0, baseColor);
-    for (const x of [-w * 0.42, w * 0.42]) {
-      for (const z of [-d * 0.38, d * 0.38]) addBox("leg", 0.06, h * 0.72, 0.06, x, 0, z, darkColor);
-    }
-    return group;
-  }
-
-  if (id === "safety-fence") {
-    for (let x = -w / 2; x <= w / 2; x += 0.8) addBox("post", 0.06, h, 0.06, x, 0, 0, "#f59e0b");
-    addBox("rail-top", w, 0.06, 0.05, 0, h * 0.75, 0, "#111827");
-    addBox("rail-mid", w, 0.06, 0.05, 0, h * 0.42, 0, "#f59e0b");
-    return group;
-  }
-
-  if (id === "pillar") {
-    addCylinder(Math.min(w, d) * 0.42, h, 0, h / 2, 0, baseColor);
-    return group;
-  }
-
-  if (id === "shutter" || id === "wall" || id === "door" || id === "power") {
-    addBox("panel", w, h, d, 0, 0, 0, baseColor);
-    const stripes = Math.max(2, Math.floor(w / 0.45));
-    for (let i = 1; i < stripes; i++) addBox("stripe", 0.018, h * 0.92, d + 0.02, -w / 2 + (w * i) / stripes, h * 0.04, 0, darkColor, 0.55);
-    return group;
-  }
-
-  addBox("body", w, h, d, 0, 0, 0, item.color, 0.88);
-  addBox("label-face", w * 0.54, Math.min(h * 0.16, 0.18), d + 0.02, 0, Math.max(h * 0.55, 0.1), -d * 0.5, lightColor, 0.7);
   return group;
+}
+
+function addFrame(group: THREE.Group, width: number, depth: number, height: number) {
+  const material = new THREE.MeshLambertMaterial({ color: "#2563eb", transparent: true, opacity: 0.72 });
+  const addBeam = (w: number, h: number, d: number, x: number, y: number, z: number) => {
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+    beam.position.set(x, y, z);
+    group.add(beam);
+  };
+
+  addBeam(width, 0.08, 0.08, 0, height, -depth / 2);
+  addBeam(width, 0.08, 0.08, 0, height, depth / 2);
+  addBeam(0.08, 0.08, depth, -width / 2, height, 0);
+  addBeam(0.08, 0.08, depth, width / 2, height, 0);
+}
+
+function addTopIcon(group: THREE.Group, item: LayoutItem, itemNumber: number, width: number, depth: number, height: number) {
+  const texture = createTopIconTexture(item, itemNumber);
+  const longestSide = Math.max(width, depth);
+  const iconWidth = Math.min(width * 0.72, Math.max(0.55, longestSide * 0.38));
+  const iconDepth = Math.min(depth * 0.72, Math.max(0.42, iconWidth * 0.62));
+  const label = new THREE.Mesh(
+    new THREE.PlaneGeometry(iconWidth, iconDepth),
+    new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
+  );
+  label.rotation.x = -Math.PI / 2;
+  label.position.set(0, height + 0.012, 0);
+  group.add(label);
+}
+
+function createTopIconTexture(item: LayoutItem, itemNumber: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 320;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return new THREE.CanvasTexture(canvas);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "rgba(255,255,255,0.94)";
+  roundRect(ctx, 18, 18, 476, 284, 34);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(15,23,42,0.72)";
+  ctx.lineWidth = 10;
+  ctx.stroke();
+
+  ctx.fillStyle = "#0f172a";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "bold 112px Arial, sans-serif";
+  ctx.fillText(String(itemNumber).padStart(2, "0"), 256, 108);
+
+  ctx.fillStyle = item.color;
+  roundRect(ctx, 118, 186, 276, 76, 18);
+  ctx.fill();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 56px Arial, sans-serif";
+  ctx.fillText(item.icon.slice(0, 4), 256, 225);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 function createSelectionOutline(item: LayoutItem) {
