@@ -7,6 +7,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 type Category = "machine" | "logistics" | "work" | "building" | "utility" | "safety";
 type ViewMode = "2d" | "3d";
 type OrbitTargetMode = "factory" | "selected" | "walk";
+type WallSide = "north" | "east" | "south" | "west";
 
 type EquipmentTemplate = {
   id: string;
@@ -40,6 +41,7 @@ type ProjectFile = {
     depth: number;
     grid: number;
     majorGrid?: number;
+    walls?: Record<WallSide, boolean>;
   };
   items: LayoutItem[];
 };
@@ -74,8 +76,6 @@ const templates: EquipmentTemplate[] = [
   { id: "restricted", name: "立入禁止エリア", category: "safety", width: 3.0, depth: 2.0, height: 0.05, color: "#ef4444", icon: "禁" },
   { id: "fire-ext", name: "消火器", category: "safety", width: 0.4, depth: 0.4, height: 1.0, color: "#dc2626", icon: "火" },
   { id: "pillar", name: "柱", category: "building", width: 0.6, depth: 0.6, height: 4.0, color: "#64748b", icon: "柱" },
-  { id: "wall", name: "壁", category: "building", width: 6.0, depth: 0.25, height: 3.0, color: "#94a3b8", icon: "壁" },
-  { id: "window-wall", name: "窓付き壁", category: "building", width: 6.0, depth: 0.25, height: 3.0, color: "#94a3b8", icon: "窓" },
   { id: "shutter", name: "シャッター", category: "building", width: 3.5, depth: 0.3, height: 3.0, color: "#7b8794", icon: "SH" },
   { id: "door", name: "扉", category: "building", width: 1.0, depth: 0.2, height: 2.1, color: "#a3a3a3", icon: "扉" },
   { id: "compressor", name: "コンプレッサー", category: "utility", width: 1.6, depth: 1.1, height: 1.4, color: "#8b5cf6", icon: "AC" },
@@ -109,7 +109,15 @@ const itemColorPalette = [
   "#111827"
 ];
 
-const defaultFactory = { width: 30, depth: 18, grid: 1, majorGrid: 4 };
+const wallSides: WallSide[] = ["north", "east", "south", "west"];
+const wallSideLabels: Record<WallSide, string> = {
+  north: "上辺",
+  east: "右辺",
+  south: "下辺",
+  west: "左辺"
+};
+const defaultWalls: Record<WallSide, boolean> = { north: false, east: false, south: false, west: false };
+const defaultFactory = { width: 30, depth: 18, grid: 1, majorGrid: 4, walls: defaultWalls };
 const draftStorageKey = "factory-layout-draft";
 
 function makeId(prefix: string) {
@@ -128,6 +136,14 @@ function loadDraftProject() {
   }
 }
 
+function makeFactory(factory?: Partial<ProjectFile["factory"]>) {
+  return {
+    ...defaultFactory,
+    ...factory,
+    walls: { ...defaultWalls, ...factory?.walls }
+  };
+}
+
 function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -138,12 +154,13 @@ function downloadBlob(blob: Blob, fileName: string) {
 }
 
 function App() {
+  const draftProject = useMemo(() => loadDraftProject(), []);
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [orbitTargetMode, setOrbitTargetMode] = useState<OrbitTargetMode>("factory");
-  const [factory, setFactory] = useState(() => ({ ...defaultFactory, ...loadDraftProject()?.factory }));
+  const [factory, setFactory] = useState(() => makeFactory(draftProject?.factory));
   const [category, setCategory] = useState<Category>("machine");
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0].id);
-  const [items, setItems] = useState<LayoutItem[]>(() => loadDraftProject()?.items ?? []);
+  const [items, setItems] = useState<LayoutItem[]>(() => draftProject?.items ?? []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sizeEditId, setSizeEditId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -315,6 +332,17 @@ function App() {
     setDrag(null);
   };
 
+  const toggleWallSide = (side: WallSide) => {
+    setFactory((current) => ({
+      ...current,
+      walls: {
+        ...defaultWalls,
+        ...current.walls,
+        [side]: !current.walls?.[side]
+      }
+    }));
+  };
+
   const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 2) return;
     event.preventDefault();
@@ -351,7 +379,7 @@ function App() {
       window.alert("JSON形式が正しくありません。");
       return;
     }
-    setFactory({ majorGrid: 4, ...project.factory });
+    setFactory(makeFactory(project.factory));
     setItems(project.items);
     setSelectedId(null);
   };
@@ -462,6 +490,18 @@ function App() {
               >
                 <div className="dimension dim-width">{factory.width} m</div>
                 <div className="dimension dim-depth">{factory.depth} m</div>
+                {wallSides.map((side) => (
+                  <button
+                    key={side}
+                    type="button"
+                    className={`wall-edge wall-edge-${side} ${factory.walls?.[side] ? "active" : ""}`}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() => toggleWallSide(side)}
+                    title={`${wallSideLabels[side]}の3D壁`}
+                  >
+                    {factory.walls?.[side] ? "壁" : ""}
+                  </button>
+                ))}
                 {renderItems.map((item) => (
                   <LayoutItemView
                     key={item.id}
@@ -665,6 +705,10 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory
     grid.position.set(factory.width / 2, 0.01, factory.depth / 2);
     scene.add(grid);
 
+    for (const wall of createFactoryWalls(factory)) {
+      scene.add(wall);
+    }
+
     for (const [index, item] of items.entries()) {
       const model = createEquipmentModel(item, index + 1);
       model.position.set(item.x + item.width / 2, 0, item.y + item.depth / 2);
@@ -834,6 +878,48 @@ function updateWalkCamera(camera: THREE.PerspectiveCamera, keys: Set<string>, ba
   camera.position.x = THREE.MathUtils.clamp(camera.position.x, 0.25, Math.max(0.25, factory.width - 0.25));
   camera.position.y = 1.6;
   camera.position.z = THREE.MathUtils.clamp(camera.position.z, 0.25, Math.max(0.25, factory.depth - 0.25));
+}
+
+function createFactoryWalls(factory: ProjectFile["factory"]) {
+  const walls: THREE.Group[] = [];
+  const thickness = 0.22;
+  const height = 3.0;
+  const activeWalls = { ...defaultWalls, ...factory.walls };
+
+  const addWall = (side: WallSide, length: number, x: number, z: number, rotation = 0) => {
+    if (!activeWalls[side]) return;
+    const wall = createWindowedWall(length, thickness, height);
+    wall.position.set(x, 0, z);
+    wall.rotation.y = rotation;
+    walls.push(wall);
+  };
+
+  addWall("north", factory.width, factory.width / 2, -thickness / 2);
+  addWall("south", factory.width, factory.width / 2, factory.depth + thickness / 2);
+  addWall("east", factory.depth, factory.width + thickness / 2, factory.depth / 2, Math.PI / 2);
+  addWall("west", factory.depth, -thickness / 2, factory.depth / 2, Math.PI / 2);
+
+  return walls;
+}
+
+function createWindowedWall(width: number, depth: number, height: number) {
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(width, height, depth),
+    new THREE.MeshLambertMaterial({ color: "#94a3b8", transparent: true, opacity: 0.9 })
+  );
+  body.position.set(0, height / 2, 0);
+  group.add(body);
+
+  const edge = new THREE.LineSegments(
+    new THREE.EdgesGeometry(body.geometry),
+    new THREE.LineBasicMaterial({ color: "#475569" })
+  );
+  edge.position.copy(body.position);
+  group.add(edge);
+
+  addWindowPanels(group, width, depth, height);
+  return group;
 }
 
 function createEquipmentModel(item: LayoutItem, itemNumber: number) {
