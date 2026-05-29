@@ -184,6 +184,25 @@ select {
   padding: 8px 12px;
 }
 
+.orbit-toggle {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-right: auto;
+}
+
+.orbit-toggle button {
+  border-radius: 4px;
+  padding: 5px 10px;
+}
+
+.orbit-toggle button.active {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 800;
+}
+
 .content {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 240px;

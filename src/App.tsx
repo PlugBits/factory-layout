@@ -6,6 +6,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 type Category = "machine" | "logistics" | "work" | "building" | "utility" | "safety";
 type ViewMode = "2d" | "3d";
+type OrbitTargetMode = "factory" | "selected";
 
 type EquipmentTemplate = {
   id: string;
@@ -99,6 +100,7 @@ function downloadBlob(blob: Blob, fileName: string) {
 
 function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
+  const [orbitTargetMode, setOrbitTargetMode] = useState<OrbitTargetMode>("factory");
   const [factory, setFactory] = useState({ width: 30, depth: 18, grid: 1 });
   const [category, setCategory] = useState<Category>("machine");
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0].id);
@@ -237,6 +239,12 @@ function App() {
 
       <main className="workspace">
         <header className="topbar">
+          {viewMode === "3d" ? (
+            <div className="orbit-toggle">
+              <button className={orbitTargetMode === "factory" ? "active" : ""} onClick={() => setOrbitTargetMode("factory")}>全体中心</button>
+              <button className={orbitTargetMode === "selected" ? "active" : ""} onClick={() => setOrbitTargetMode("selected")} disabled={!selectedItem}>選択中心</button>
+            </div>
+          ) : null}
           <button onClick={rotateSelected} disabled={!selectedItem}><RotateCw size={16} />回転</button>
           <button onClick={deleteSelected} disabled={!selectedItem}>削除</button>
           <button onClick={saveJson}><Save size={16} />JSON保存</button>
@@ -280,7 +288,7 @@ function App() {
               </div>
             </div>
           ) : (
-            <ThreePreview factory={factory} items={items} selectedId={selectedId} />
+            <ThreePreview factory={factory} items={items} selectedId={selectedId} orbitTargetMode={orbitTargetMode} />
           )}
 
           <aside className="properties">
@@ -335,7 +343,7 @@ function LayoutItemView({ item, selected, pxPerMeter, onPointerDown, onDoubleCli
   );
 }
 
-function ThreePreview({ factory, items, selectedId }: { factory: ProjectFile["factory"]; items: LayoutItem[]; selectedId: string | null }) {
+function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory: ProjectFile["factory"]; items: LayoutItem[]; selectedId: string | null; orbitTargetMode: OrbitTargetMode }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -357,7 +365,8 @@ function ThreePreview({ factory, items, selectedId }: { factory: ProjectFile["fa
     mount.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(factory.width / 2, 0, factory.depth / 2);
+    const orbitTarget = getOrbitTarget(factory, items, selectedId, orbitTargetMode);
+    controls.target.set(orbitTarget.x, orbitTarget.y, orbitTarget.z);
     controls.update();
 
     scene.add(new THREE.HemisphereLight("#ffffff", "#94a3b8", 1.7));
@@ -409,7 +418,7 @@ function ThreePreview({ factory, items, selectedId }: { factory: ProjectFile["fa
       renderer.dispose();
       mount.innerHTML = "";
     };
-  }, [factory, items, selectedId]);
+  }, [factory, items, selectedId, orbitTargetMode]);
 
   return <div className="three-preview" ref={mountRef} />;
 }
@@ -417,6 +426,22 @@ function ThreePreview({ factory, items, selectedId }: { factory: ProjectFile["fa
 function snap(value: number, grid: number) {
   if (!grid) return value;
   return Number((Math.round(value / grid) * grid).toFixed(3));
+}
+
+function getOrbitTarget(factory: ProjectFile["factory"], items: LayoutItem[], selectedId: string | null, mode: OrbitTargetMode) {
+  const selected = items.find((item) => item.id === selectedId);
+  if (mode === "selected" && selected) {
+    return {
+      x: selected.x + selected.width / 2,
+      y: Math.max(selected.height * 0.45, 0.2),
+      z: selected.y + selected.depth / 2
+    };
+  }
+  return {
+    x: factory.width / 2,
+    y: 0,
+    z: factory.depth / 2
+  };
 }
 
 export default App;
