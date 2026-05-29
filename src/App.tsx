@@ -102,8 +102,23 @@ const itemColorPalette = [
   "#111827"
 ];
 
+const defaultFactory = { width: 30, depth: 18, grid: 1, majorGrid: 4 };
+const draftStorageKey = "factory-layout-draft";
+
 function makeId(prefix: string) {
   return `${prefix}-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`;
+}
+
+function loadDraftProject() {
+  try {
+    const raw = window.localStorage.getItem(draftStorageKey);
+    if (!raw) return null;
+    const project = JSON.parse(raw) as ProjectFile;
+    if (!project.factory || !Array.isArray(project.items)) return null;
+    return project;
+  } catch {
+    return null;
+  }
 }
 
 function downloadBlob(blob: Blob, fileName: string) {
@@ -118,14 +133,15 @@ function downloadBlob(blob: Blob, fileName: string) {
 function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [orbitTargetMode, setOrbitTargetMode] = useState<OrbitTargetMode>("factory");
-  const [factory, setFactory] = useState({ width: 30, depth: 18, grid: 1, majorGrid: 4 });
+  const [factory, setFactory] = useState(() => ({ ...defaultFactory, ...loadDraftProject()?.factory }));
   const [category, setCategory] = useState<Category>("machine");
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0].id);
-  const [items, setItems] = useState<LayoutItem[]>([]);
+  const [items, setItems] = useState<LayoutItem[]>(() => loadDraftProject()?.items ?? []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sizeEditId, setSizeEditId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [drag, setDrag] = useState<{ id: string; dx: number; dy: number } | null>(null);
+  const [panDrag, setPanDrag] = useState<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -195,6 +211,15 @@ function App() {
     selectedRow?.scrollIntoView({ block: "nearest" });
   }, [selectedId]);
 
+  useEffect(() => {
+    const project: ProjectFile = { version: 1, factory, items };
+    try {
+      window.localStorage.setItem(draftStorageKey, JSON.stringify(project));
+    } catch {
+      // Autosave is best-effort; JSON export still works when storage is unavailable.
+    }
+  }, [factory, items]);
+
   const deleteSelected = () => {
     if (!selectedId) return;
     setItems((current) => current.filter((item) => item.id !== selectedId));
@@ -234,7 +259,7 @@ function App() {
     if (viewMode !== "2d" || !wrap) return;
 
     const wheel = (event: WheelEvent) => {
-      if (!event.ctrlKey || !boardRef.current) return;
+      if (!event.ctrlKey || !boardRef.current || !wrap.contains(event.target as Node)) return;
       event.preventDefault();
 
       const boardRect = boardRef.current.getBoundingClientRect();
@@ -251,11 +276,12 @@ function App() {
       });
     };
 
-    wrap.addEventListener("wheel", wheel, { passive: false });
-    return () => wrap.removeEventListener("wheel", wheel);
+    document.addEventListener("wheel", wheel, { passive: false, capture: true });
+    return () => document.removeEventListener("wheel", wheel, true);
   }, [viewMode, zoom]);
 
   const startDrag = (event: React.PointerEvent, item: LayoutItem) => {
+    if (event.button !== 0) return;
     const rect = boardRef.current?.getBoundingClientRect();
     if (!rect) return;
     setSelectedId(item.id);
@@ -280,6 +306,29 @@ function App() {
   const endDrag = (event: React.PointerEvent) => {
     if (drag) event.currentTarget.releasePointerCapture(event.pointerId);
     setDrag(null);
+  };
+
+  const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 2) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setPanDrag({
+      x: event.clientX,
+      y: event.clientY,
+      scrollLeft: event.currentTarget.scrollLeft,
+      scrollTop: event.currentTarget.scrollTop
+    });
+  };
+
+  const movePan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!panDrag) return;
+    event.currentTarget.scrollLeft = panDrag.scrollLeft - (event.clientX - panDrag.x);
+    event.currentTarget.scrollTop = panDrag.scrollTop - (event.clientY - panDrag.y);
+  };
+
+  const endPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (panDrag) event.currentTarget.releasePointerCapture(event.pointerId);
+    setPanDrag(null);
   };
 
   const saveJson = () => {
@@ -372,7 +421,15 @@ function App() {
 
         <section className="content">
           {viewMode === "2d" ? (
-            <div className="board-wrap" ref={boardWrapRef}>
+            <div
+              className={`board-wrap ${panDrag ? "panning" : ""}`}
+              ref={boardWrapRef}
+              onContextMenu={(event) => event.preventDefault()}
+              onPointerDown={startPan}
+              onPointerMove={movePan}
+              onPointerUp={endPan}
+              onPointerCancel={endPan}
+            >
               <div
                 ref={boardRef}
                 className="layout-board"
@@ -562,12 +619,19 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory
     const walkKeys = new Set<string>();
     const walkState = {
       dragging: false,
+      panning: false,
       yaw: Math.PI,
       pitch: 0,
       speed: 4.2
     };
 
     if (controls) {
+      controls.enablePan = true;
+      controls.mouseButtons = {
+        LEFT: THREE.MOUSE.ROTATE,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.PAN
+      };
       const orbitTarget = getOrbitTarget(factory, items, selectedId, orbitTargetMode);
       controls.target.set(orbitTarget.x, orbitTarget.y, orbitTarget.z);
       controls.update();
@@ -618,10 +682,18 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory
       walkKeys.delete(event.code);
     };
     const pointerDown = (event: PointerEvent) => {
-      walkState.dragging = true;
+      if (event.button === 2) {
+        walkState.panning = true;
+      } else {
+        walkState.dragging = true;
+      }
       renderer.domElement.setPointerCapture(event.pointerId);
     };
     const pointerMove = (event: PointerEvent) => {
+      if (walkState.panning) {
+        panWalkCamera(camera, event.movementX, event.movementY, factory);
+        return;
+      }
       if (!walkState.dragging) return;
       walkState.yaw -= event.movementX * 0.0024;
       walkState.pitch = THREE.MathUtils.clamp(walkState.pitch - event.movementY * 0.0024, -1.25, 1.25);
@@ -629,10 +701,16 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory
     };
     const pointerUp = (event: PointerEvent) => {
       walkState.dragging = false;
+      walkState.panning = false;
       if (renderer.domElement.hasPointerCapture(event.pointerId)) {
         renderer.domElement.releasePointerCapture(event.pointerId);
       }
     };
+    const contextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+    };
+
+    renderer.domElement.addEventListener("contextmenu", contextMenu);
 
     if (orbitTargetMode === "walk") {
       window.addEventListener("keydown", keyDown);
@@ -659,6 +737,7 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory
     return () => {
       cancelAnimationFrame(animation);
       controls?.dispose();
+      renderer.domElement.removeEventListener("contextmenu", contextMenu);
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
       renderer.domElement.removeEventListener("pointerdown", pointerDown);
@@ -712,6 +791,19 @@ function isWalkKey(code: string) {
 
 function isFormField(target: EventTarget | null) {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+}
+
+function panWalkCamera(camera: THREE.PerspectiveCamera, movementX: number, movementY: number, factory: ProjectFile["factory"]) {
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  forward.y = 0;
+  forward.normalize();
+  const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+  camera.position.add(right.multiplyScalar(-movementX * 0.018));
+  camera.position.add(forward.multiplyScalar(movementY * 0.018));
+  camera.position.x = THREE.MathUtils.clamp(camera.position.x, 0.25, Math.max(0.25, factory.width - 0.25));
+  camera.position.y = 1.6;
+  camera.position.z = THREE.MathUtils.clamp(camera.position.z, 0.25, Math.max(0.25, factory.depth - 0.25));
 }
 
 function updateWalkCamera(camera: THREE.PerspectiveCamera, keys: Set<string>, baseSpeed: number, delta: number, factory: ProjectFile["factory"]) {

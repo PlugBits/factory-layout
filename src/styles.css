@@ -266,6 +266,10 @@ select {
   padding: 24px;
 }
 
+.board-wrap.panning {
+  cursor: grabbing;
+}
+
 .layout-board {
   position: relative;
   background-color: #fff;
