@@ -116,10 +116,8 @@ button:disabled {
 }
 
 .template-panel {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
+  display: block;
+  flex: 0 1 auto;
 }
 
 label {
@@ -151,8 +149,7 @@ select {
 }
 
 .template-panel .template-list {
-  flex: 1;
-  max-height: none;
+  max-height: min(560px, calc(100vh - 360px));
 }
 
 .template-list button {
@@ -202,6 +199,7 @@ select {
   display: grid;
   grid-template-rows: 48px minmax(0, 1fr);
   min-width: 0;
+  min-height: 0;
 }
 
 .topbar {
@@ -260,10 +258,13 @@ select {
 .content {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
+  height: 100%;
   min-height: 0;
 }
 
 .board-wrap {
+  min-width: 0;
+  min-height: 0;
   overflow: auto;
   padding: 24px;
   user-select: none;

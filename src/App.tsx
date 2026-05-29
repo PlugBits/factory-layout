@@ -141,7 +141,7 @@ function App() {
   const [sizeEditId, setSizeEditId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [drag, setDrag] = useState<{ id: string; dx: number; dy: number } | null>(null);
-  const [panDrag, setPanDrag] = useState<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
+  const [panDrag, setPanDrag] = useState<{ x: number; y: number } | null>(null);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -314,17 +314,17 @@ function App() {
     event.currentTarget.setPointerCapture(event.pointerId);
     setPanDrag({
       x: event.clientX,
-      y: event.clientY,
-      scrollLeft: event.currentTarget.scrollLeft,
-      scrollTop: event.currentTarget.scrollTop
+      y: event.clientY
     });
   };
 
   const movePan = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!panDrag) return;
     event.preventDefault();
-    event.currentTarget.scrollLeft -= event.movementX;
-    event.currentTarget.scrollTop -= event.movementY;
+    const dx = event.clientX - panDrag.x;
+    const dy = event.clientY - panDrag.y;
+    event.currentTarget.scrollBy({ left: -dx, top: -dy });
+    setPanDrag({ x: event.clientX, y: event.clientY });
   };
 
   const endPan = (event: React.PointerEvent<HTMLDivElement>) => {
