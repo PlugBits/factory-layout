@@ -123,6 +123,7 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [drag, setDrag] = useState<{ id: string; dx: number; dy: number } | null>(null);
+  const boardWrapRef = useRef<HTMLDivElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -194,6 +195,32 @@ function App() {
   const changeZoom = (delta: number) => {
     setZoom((current) => clamp(Number((current + delta).toFixed(2)), 0.5, 2.5));
   };
+
+  useEffect(() => {
+    const wrap = boardWrapRef.current;
+    if (viewMode !== "2d" || !wrap) return;
+
+    const wheel = (event: WheelEvent) => {
+      if (!event.ctrlKey || !boardRef.current) return;
+      event.preventDefault();
+
+      const boardRect = boardRef.current.getBoundingClientRect();
+      const localX = event.clientX - boardRect.left;
+      const localY = event.clientY - boardRect.top;
+      const nextZoom = clamp(Number((zoom + (event.deltaY < 0 ? 0.1 : -0.1)).toFixed(2)), 0.5, 2.5);
+      if (nextZoom === zoom) return;
+
+      const ratio = nextZoom / zoom;
+      setZoom(nextZoom);
+      requestAnimationFrame(() => {
+        wrap.scrollLeft += localX * (ratio - 1);
+        wrap.scrollTop += localY * (ratio - 1);
+      });
+    };
+
+    wrap.addEventListener("wheel", wheel, { passive: false });
+    return () => wrap.removeEventListener("wheel", wheel);
+  }, [viewMode, zoom]);
 
   const startDrag = (event: React.PointerEvent, item: LayoutItem) => {
     const rect = boardRef.current?.getBoundingClientRect();
@@ -311,7 +338,7 @@ function App() {
 
         <section className="content">
           {viewMode === "2d" ? (
-            <div className="board-wrap">
+            <div className="board-wrap" ref={boardWrapRef}>
               <div
                 ref={boardRef}
                 className="layout-board"
