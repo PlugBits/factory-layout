@@ -129,6 +129,7 @@ function App() {
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const placedListRef = useRef<HTMLDivElement | null>(null);
 
   const basePxPerMeter = useMemo(() => Math.max(22, Math.min(52, 960 / factory.width)), [factory.width]);
   const pxPerMeter = basePxPerMeter * zoom;
@@ -136,7 +137,7 @@ function App() {
   const sizeEditItem = items.find((item) => item.id === sizeEditId) ?? null;
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0];
   const renderItems = useMemo(
-    () => items.map((item, index) => ({ item, itemNumber: index + 1 })).sort((left, right) => Number(isAreaItem(right.item)) - Number(isAreaItem(left.item))),
+    () => [...items].sort((left, right) => Number(isAreaItem(right)) - Number(isAreaItem(left))),
     [items]
   );
 
@@ -187,6 +188,12 @@ function App() {
     window.addEventListener("keydown", keyDown);
     return () => window.removeEventListener("keydown", keyDown);
   }, [drag, factory, items, selectedId, viewMode]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const selectedRow = placedListRef.current?.querySelector(`[data-item-id="${selectedId}"]`);
+    selectedRow?.scrollIntoView({ block: "nearest" });
+  }, [selectedId]);
 
   const deleteSelected = () => {
     if (!selectedId) return;
@@ -308,15 +315,15 @@ function App() {
           <button className={viewMode === "3d" ? "active" : ""} onClick={() => setViewMode("3d")}><Eye size={16} />3D</button>
         </div>
 
-        <section className="panel">
-          <div className="panel-title">工場サイズ</div>
+        <details className="panel factory-panel">
+          <summary>工場サイズ</summary>
           <label>幅 m<input type="number" value={factory.width} min={5} step={1} onChange={(event) => setFactory({ ...factory, width: Number(event.target.value) })} /></label>
           <label>奥行 m<input type="number" value={factory.depth} min={5} step={1} onChange={(event) => setFactory({ ...factory, depth: Number(event.target.value) })} /></label>
           <label>グリッド m<input type="number" value={factory.grid} min={0.25} step={0.25} onChange={(event) => setFactory({ ...factory, grid: Number(event.target.value) })} /></label>
           <label>強調グリッド m<input type="number" value={factory.majorGrid} min={1} step={1} onChange={(event) => setFactory({ ...factory, majorGrid: Number(event.target.value) })} /></label>
-        </section>
+        </details>
 
-        <section className="panel">
+        <section className="panel template-panel">
           <div className="panel-title">設備テンプレート</div>
           <select value={category} onChange={(event) => setCategory(event.target.value as Category)}>
             {(Object.keys(categoryLabels) as Category[]).map((key) => <option key={key} value={key}>{categoryLabels[key]}</option>)}
@@ -390,11 +397,10 @@ function App() {
               >
                 <div className="dimension dim-width">{factory.width} m</div>
                 <div className="dimension dim-depth">{factory.depth} m</div>
-                {renderItems.map(({ item, itemNumber }) => (
+                {renderItems.map((item) => (
                   <LayoutItemView
                     key={item.id}
                     item={item}
-                    itemNumber={itemNumber}
                     selected={item.id === selectedId}
                     area={isAreaItem(item)}
                     pxPerMeter={pxPerMeter}
@@ -410,14 +416,15 @@ function App() {
 
           <aside className="properties">
             <div className="panel-title">配置済み要素</div>
-            <div className="placed-list">
+            <div className="placed-list" ref={placedListRef}>
               {items.length ? items.map((item, index) => (
                 <div
                   key={item.id}
+                  data-item-id={item.id}
+                  data-item-number={index + 1}
                   className={item.id === selectedId ? "placed-item selected" : "placed-item"}
                   onClick={() => setSelectedId(item.id)}
                 >
-                  <span className="placed-number">{String(index + 1).padStart(2, "0")}</span>
                   <span className="placed-color" style={{ backgroundColor: item.color }} />
                   <span className="placed-main">
                     <strong>{item.name}</strong>
@@ -500,9 +507,8 @@ function App() {
   );
 }
 
-function LayoutItemView({ item, itemNumber, selected, area, pxPerMeter, onPointerDown, onDoubleClick }: {
+function LayoutItemView({ item, selected, area, pxPerMeter, onPointerDown, onDoubleClick }: {
   item: LayoutItem;
-  itemNumber: number;
   selected: boolean;
   area: boolean;
   pxPerMeter: number;
@@ -524,7 +530,6 @@ function LayoutItemView({ item, itemNumber, selected, area, pxPerMeter, onPointe
       onPointerDown={onPointerDown}
       onDoubleClick={onDoubleClick}
     >
-      <div className="item-number">{String(itemNumber).padStart(2, "0")}</div>
       <div className="item-icon">{item.icon}</div>
       <div className="item-name">{item.name}</div>
       <div className="item-size">{item.width} x {item.depth} x {item.height}m</div>

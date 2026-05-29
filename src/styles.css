@@ -52,6 +52,10 @@ button:disabled {
 
 .sidebar {
   border-right: 1px solid #cad3df;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .brand {
@@ -100,6 +104,24 @@ button:disabled {
   color: #334155;
 }
 
+.factory-panel summary {
+  cursor: pointer;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.factory-panel[open] summary {
+  margin-bottom: 8px;
+}
+
+.template-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
 label {
   display: grid;
   gap: 4px;
@@ -124,6 +146,11 @@ select {
   max-height: 320px;
   overflow: auto;
   margin: 8px 0;
+}
+
+.template-panel .template-list {
+  flex: 1;
+  max-height: none;
 }
 
 .template-list button {
@@ -304,20 +331,6 @@ select {
   color: #0f172a;
 }
 
-.item-number {
-  position: absolute;
-  top: 3px;
-  left: 4px;
-  min-width: 22px;
-  border: 1px solid rgba(15, 23, 42, 0.32);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #0f172a;
-  font-size: 10px;
-  font-weight: 900;
-  line-height: 16px;
-}
-
 .layout-item:active {
   cursor: grabbing;
 }
@@ -397,7 +410,7 @@ select {
 
 .placed-item {
   display: grid;
-  grid-template-columns: 32px 18px minmax(0, 1fr) auto;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   min-height: 44px;
@@ -412,17 +425,6 @@ select {
 .placed-item.selected {
   border-color: #2563eb;
   background: #dbeafe;
-}
-
-.placed-number {
-  display: grid;
-  place-items: center;
-  min-height: 24px;
-  border-radius: 4px;
-  background: #0f172a;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 900;
 }
 
 .placed-color {
