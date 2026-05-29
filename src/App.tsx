@@ -883,9 +883,8 @@ function addFrame(group: THREE.Group, width: number, depth: number, height: numb
 
 function addTopIcon(group: THREE.Group, item: LayoutItem, itemNumber: number, width: number, depth: number, height: number) {
   const texture = createTopIconTexture(item, itemNumber);
-  const longestSide = Math.max(width, depth);
-  const iconWidth = Math.min(width * 0.72, Math.max(0.55, longestSide * 0.38));
-  const iconDepth = Math.min(depth * 0.72, Math.max(0.42, iconWidth * 0.62));
+  const iconWidth = Math.min(1.9, Math.max(0.62, width * 0.72));
+  const iconDepth = Math.min(0.62, Math.max(0.38, depth * 0.72));
   const label = new THREE.Mesh(
     new THREE.PlaneGeometry(iconWidth, iconDepth),
     new THREE.MeshBasicMaterial({
