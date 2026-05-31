@@ -976,12 +976,12 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
     let tweening = false;
     let cancelAnim = false;
 
-    // quaternion that makes Object3D at `pos` look toward `target`
+    // quaternion that makes a Camera at `pos` look toward `target` (Camera uses -Z forward)
     const lookAtQuat = (pos: THREE.Vector3, target: THREE.Vector3): THREE.Quaternion => {
-      const obj = new THREE.Object3D();
-      obj.position.copy(pos);
-      obj.lookAt(target);
-      return obj.quaternion.clone();
+      const tempCam = new THREE.PerspectiveCamera();
+      tempCam.position.copy(pos);
+      tempCam.lookAt(target);
+      return tempCam.quaternion.clone();
     };
 
     const startAnim = (
