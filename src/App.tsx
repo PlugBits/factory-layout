@@ -187,16 +187,35 @@ function App() {
   const placedListRef = useRef<HTMLDivElement | null>(null);
   // Feature 2: present mode signal ref
   const presentSignalRef = useRef<(() => void) | null>(null);
+  // 2点間距離設定
+  const [secondSelectedId, setSecondSelectedId] = useState<string | null>(null);
+  const [twoPointTargetGap, setTwoPointTargetGap] = useState(0.5);
+  const [twoPointAxis, setTwoPointAxis] = useState<"x" | "y">("x");
 
   const basePxPerMeter = useMemo(() => Math.max(22, Math.min(52, 960 / factory.width)), [factory.width]);
   const pxPerMeter = basePxPerMeter * zoom;
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
+  const secondItem = items.find((item) => item.id === secondSelectedId) ?? null;
   const sizeEditItem = items.find((item) => item.id === sizeEditId) ?? null;
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0];
   const renderItems = useMemo(
     () => [...items].sort((left, right) => Number(isAreaItem(right)) - Number(isAreaItem(left))),
     [items]
   );
+
+  // 2点間の辺-辺距離（正=間隔あり、負=重複）
+  const computedGaps = useMemo(() => {
+    if (!selectedItem || !secondItem) return null;
+    const A = selectedItem;
+    const B = secondItem;
+    const xGap = (B.x + B.width / 2) >= (A.x + A.width / 2)
+      ? B.x - (A.x + A.width)
+      : A.x - (B.x + B.width);
+    const yGap = (B.y + B.depth / 2) >= (A.y + A.depth / 2)
+      ? B.y - (A.y + A.depth)
+      : A.y - (B.y + B.depth);
+    return { xGap, yGap };
+  }, [selectedItem, secondItem]);
 
   // Feature 3: 2D grid coordinate labels at major grid intersections
   const majorGridSize = Math.max(1, factory.majorGrid || 4);
@@ -283,6 +302,26 @@ function App() {
     setPendingRelativeSnap({ x, y });
   };
 
+  // Bを移動して2点間の間隔を指定値に合わせる
+  const applyTwoPointGap = () => {
+    if (!selectedItem || !secondItem) return;
+    const A = selectedItem;
+    const B = secondItem;
+    if (twoPointAxis === "x") {
+      const bIsRight = (B.x + B.width / 2) >= (A.x + A.width / 2);
+      const newBX = bIsRight
+        ? A.x + A.width + twoPointTargetGap
+        : A.x - B.width - twoPointTargetGap;
+      updateItem(B.id, { x: snap(clamp(newBX, 0, factory.width - B.width), factory.grid) });
+    } else {
+      const bIsBelow = (B.y + B.depth / 2) >= (A.y + A.depth / 2);
+      const newBY = bIsBelow
+        ? A.y + A.depth + twoPointTargetGap
+        : A.y - B.depth - twoPointTargetGap;
+      updateItem(B.id, { y: snap(clamp(newBY, 0, factory.depth - B.depth), factory.grid) });
+    }
+  };
+
   useEffect(() => {
     const keyDown = (event: KeyboardEvent) => {
       if (viewMode !== "2d" || !selectedId || drag || isFormField(event.target)) return;
@@ -298,6 +337,10 @@ function App() {
     window.addEventListener("keydown", keyDown);
     return () => window.removeEventListener("keydown", keyDown);
   }, [drag, factory, items, selectedId, viewMode]);
+
+  useEffect(() => {
+    setSecondSelectedId(null);
+  }, [selectedId]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -376,6 +419,13 @@ function App() {
 
   const startDrag = (event: React.PointerEvent, item: LayoutItem) => {
     if (event.button !== 0) return;
+    if (event.ctrlKey || event.metaKey) {
+      // Ctrl+click: toggle second selection (primary stays unchanged)
+      if (item.id !== selectedId) {
+        setSecondSelectedId((prev) => prev === item.id ? null : item.id);
+      }
+      return;
+    }
     const rect = boardRef.current?.getBoundingClientRect();
     if (!rect) return;
     setSelectedId(item.id);
@@ -601,6 +651,7 @@ function App() {
                     key={item.id}
                     item={item}
                     selected={item.id === selectedId}
+                    secondSelected={item.id === secondSelectedId}
                     area={isAreaItem(item)}
                     pxPerMeter={pxPerMeter}
                     onPointerDown={(event) => startDrag(event, item)}
@@ -628,8 +679,14 @@ function App() {
                   key={item.id}
                   data-item-id={item.id}
                   data-item-number={index + 1}
-                  className={item.id === selectedId ? "placed-item selected" : "placed-item"}
-                  onClick={() => setSelectedId(item.id)}
+                  className={`placed-item${item.id === selectedId ? " selected" : ""}${item.id === secondSelectedId ? " second-selected" : ""}`}
+                  onClick={(event) => {
+                    if (event.ctrlKey || event.metaKey) {
+                      if (item.id !== selectedId) setSecondSelectedId((prev) => prev === item.id ? null : item.id);
+                    } else {
+                      setSelectedId(item.id);
+                    }
+                  }}
                 >
                   <span className="placed-color" style={{ backgroundColor: item.color }} />
                   <span className="placed-main">
@@ -712,6 +769,42 @@ function App() {
                 <button className="primary-button" style={{ marginTop: 4 }} onClick={applyRelativePlacement}>
                   この距離に次の設備を配置
                 </button>
+
+                {/* 2点間距離設定（Ctrl+クリックで2つ目を選択時に表示） */}
+                {secondItem ? (
+                  <>
+                    <div className="section-divider">2点間の距離設定</div>
+                    <div className="two-point-header">
+                      <span className="two-point-badge two-point-a">A</span>
+                      <span className="two-point-name">{selectedItem.name}</span>
+                    </div>
+                    <div className="two-point-header">
+                      <span className="two-point-badge two-point-b">B</span>
+                      <span className="two-point-name">{secondItem.name}</span>
+                    </div>
+                    {computedGaps && (
+                      <div className="two-point-gaps">
+                        <span>X間隔: <strong>{computedGaps.xGap.toFixed(2)} m</strong></span>
+                        <span>Y間隔: <strong>{computedGaps.yGap.toFixed(2)} m</strong></span>
+                      </div>
+                    )}
+                    <label>調整軸
+                      <select value={twoPointAxis} onChange={(event) => setTwoPointAxis(event.target.value as "x" | "y")}>
+                        <option value="x">X方向（横）</option>
+                        <option value="y">Y方向（縦）</option>
+                      </select>
+                    </label>
+                    <label>目標間隔 m
+                      <input type="number" value={twoPointTargetGap} min={0} step={0.1}
+                        onChange={(event) => setTwoPointTargetGap(Number(event.target.value))} />
+                    </label>
+                    <button className="primary-button" style={{ marginTop: 4 }} onClick={applyTwoPointGap}>
+                      Bを移動して適用
+                    </button>
+                  </>
+                ) : (
+                  <p className="section-desc" style={{ marginTop: 8 }}>Ctrl+クリックで2つ目を選択→間隔設定</p>
+                )}
               </>
             ) : (
               <p>設備をクリックして選択</p>
@@ -736,9 +829,10 @@ function App() {
   );
 }
 
-function LayoutItemView({ item, selected, area, pxPerMeter, onPointerDown, onDoubleClick }: {
+function LayoutItemView({ item, selected, secondSelected, area, pxPerMeter, onPointerDown, onDoubleClick }: {
   item: LayoutItem;
   selected: boolean;
+  secondSelected: boolean;
   area: boolean;
   pxPerMeter: number;
   onPointerDown: (event: React.PointerEvent) => void;
@@ -746,7 +840,7 @@ function LayoutItemView({ item, selected, area, pxPerMeter, onPointerDown, onDou
 }) {
   return (
     <div
-      className={`layout-item ${selected ? "selected" : ""} ${area ? "area-item" : ""}`}
+      className={`layout-item${selected ? " selected" : ""}${secondSelected ? " second-selected" : ""}${area ? " area-item" : ""}`}
       style={{
         left: item.x * pxPerMeter,
         top: item.y * pxPerMeter,
