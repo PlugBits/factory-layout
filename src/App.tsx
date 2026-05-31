@@ -10,7 +10,6 @@ type Category = "machine" | "logistics" | "work" | "building" | "utility" | "saf
 type ViewMode = "2d" | "3d";
 type OrbitTargetMode = "factory" | "selected" | "walk";
 type WallSide = "north" | "east" | "south" | "west";
-type RelativeAnchor = "right" | "left" | "top" | "bottom" | "center";
 
 type EquipmentTemplate = {
   id: string;
@@ -112,14 +111,6 @@ const itemColorPalette = [
   "#111827"
 ];
 
-const relativeAnchorLabels: Record<RelativeAnchor, string> = {
-  right: "右端",
-  left: "左端",
-  bottom: "下端",
-  top: "上端",
-  center: "中心"
-};
-
 const wallSides: WallSide[] = ["north", "east", "south", "west"];
 const wallSideLabels: Record<WallSide, string> = {
   north: "上辺",
@@ -177,10 +168,6 @@ function App() {
   const [zoom, setZoom] = useState(1);
   const [drag, setDrag] = useState<{ id: string; dx: number; dy: number } | null>(null);
   const [panDrag, setPanDrag] = useState<{ x: number; y: number } | null>(null);
-  // Feature 4: relative placement state
-  const [relativeAnchor, setRelativeAnchor] = useState<RelativeAnchor>("right");
-  const [relativeDistance, setRelativeDistance] = useState(1.0);
-  const [pendingRelativeSnap, setPendingRelativeSnap] = useState<{ x: number; y: number } | null>(null);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -229,27 +216,17 @@ function App() {
     return labels;
   }, [factory.width, factory.depth, majorGridSize]);
 
-  // Feature 4: modified addSelectedTemplate – uses pendingRelativeSnap when set
   const addSelectedTemplate = () => {
     const template = selectedTemplate;
     const id = makeId("item");
-    let startX = 1;
-    let startY = 1;
-
-    if (pendingRelativeSnap) {
-      startX = pendingRelativeSnap.x;
-      startY = pendingRelativeSnap.y;
-      setPendingRelativeSnap(null);
-    }
-
     setItems((current) => [
       ...current,
       {
         id,
         templateId: template.id,
         name: template.name,
-        x: snap(startX, factory.grid),
-        y: snap(startY, factory.grid),
+        x: 1,
+        y: 1,
         width: template.width,
         depth: template.depth,
         height: template.height,
@@ -271,53 +248,18 @@ function App() {
     updateItem(item.id, { x, y });
   };
 
-  // Feature 4: compute and store relative placement position for next item
-  const applyRelativePlacement = () => {
-    if (!selectedItem) return;
-    const template = selectedTemplate;
-    let x = selectedItem.x;
-    let y = selectedItem.y;
-
-    switch (relativeAnchor) {
-      case "right":
-        x = selectedItem.x + selectedItem.width + relativeDistance;
-        break;
-      case "left":
-        x = selectedItem.x - template.width - relativeDistance;
-        break;
-      case "bottom":
-        y = selectedItem.y + selectedItem.depth + relativeDistance;
-        break;
-      case "top":
-        y = selectedItem.y - template.depth - relativeDistance;
-        break;
-      case "center":
-        x = selectedItem.x + (selectedItem.width - template.width) / 2;
-        y = selectedItem.y + (selectedItem.depth - template.depth) / 2;
-        break;
-    }
-
-    x = clamp(x, 0, Math.max(0, factory.width - template.width));
-    y = clamp(y, 0, Math.max(0, factory.depth - template.depth));
-    setPendingRelativeSnap({ x, y });
-  };
-
-  // Bを移動して2点間の間隔を指定値に合わせる
-  const applyTwoPointGap = () => {
+  // 2点間の間隔をリアルタイムで適用（gap・axis を明示的に受け取り即移動）
+  const applyTwoPointGap = (gap: number, axis: "x" | "y") => {
     if (!selectedItem || !secondItem) return;
     const A = selectedItem;
     const B = secondItem;
-    if (twoPointAxis === "x") {
+    if (axis === "x") {
       const bIsRight = (B.x + B.width / 2) >= (A.x + A.width / 2);
-      const newBX = bIsRight
-        ? A.x + A.width + twoPointTargetGap
-        : A.x - B.width - twoPointTargetGap;
+      const newBX = bIsRight ? A.x + A.width + gap : A.x - B.width - gap;
       updateItem(B.id, { x: snap(clamp(newBX, 0, factory.width - B.width), factory.grid) });
     } else {
       const bIsBelow = (B.y + B.depth / 2) >= (A.y + A.depth / 2);
-      const newBY = bIsBelow
-        ? A.y + A.depth + twoPointTargetGap
-        : A.y - B.depth - twoPointTargetGap;
+      const newBY = bIsBelow ? A.y + A.depth + gap : A.y - B.depth - gap;
       updateItem(B.id, { y: snap(clamp(newBY, 0, factory.depth - B.depth), factory.grid) });
     }
   };
@@ -719,95 +661,79 @@ function App() {
               )}
             </div>
 
-            <div className="panel-title">選択中</div>
-            {selectedItem ? (
+            {/* 2点選択中：間隔設定のみ表示 */}
+            {selectedItem && secondItem ? (
               <>
-                <label>名称<input value={selectedItem.name} onChange={(event) => updateItem(selectedItem.id, { name: event.target.value })} /></label>
-                <label>アイコン<input value={selectedItem.icon} maxLength={6} onChange={(event) => updateItem(selectedItem.id, { icon: event.target.value })} /></label>
-                <label>X m<input type="number" value={selectedItem.x} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { x: Number(event.target.value) })} /></label>
-                <label>Y m<input type="number" value={selectedItem.y} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { y: Number(event.target.value) })} /></label>
-                <label>幅 m<input type="number" value={selectedItem.width} step={0.1} onChange={(event) => updateItem(selectedItem.id, { width: Number(event.target.value) })} /></label>
-                <label>奥行 m<input type="number" value={selectedItem.depth} step={0.1} onChange={(event) => updateItem(selectedItem.id, { depth: Number(event.target.value) })} /></label>
-                <label>高さ m<input type="number" value={selectedItem.height} step={0.1} onChange={(event) => updateItem(selectedItem.id, { height: Number(event.target.value) })} /></label>
-                <label>回転<select value={selectedItem.rotation} onChange={(event) => updateItem(selectedItem.id, { rotation: Number(event.target.value) as LayoutItem["rotation"] })}>
-                  {[0, 90, 180, 270].map((angle) => <option key={angle} value={angle}>{angle}°</option>)}
-                </select></label>
-                <div className="color-panel">
-                  <div className="field-title">色</div>
-                  <div className="color-grid">
-                    {itemColorPalette.map((color) => (
-                      <button
-                        key={color}
-                        className={selectedItem.color.toLowerCase() === color.toLowerCase() ? "color-swatch active" : "color-swatch"}
-                        style={{ backgroundColor: color }}
-                        onClick={() => updateItem(selectedItem.id, { color })}
-                        aria-label={`色 ${color}`}
-                      />
-                    ))}
-                  </div>
+                <div className="panel-title">2点間の距離設定</div>
+                <div className="two-point-header">
+                  <span className="two-point-badge two-point-a">A</span>
+                  <span className="two-point-name">{selectedItem.name}</span>
                 </div>
-
-                {/* Feature 4: relative placement */}
-                <div className="section-divider">相対配置</div>
-                <p className="section-desc">基準：<strong>{selectedItem.name}</strong></p>
-                <label>基準端
-                  <select value={relativeAnchor} onChange={(event) => setRelativeAnchor(event.target.value as RelativeAnchor)}>
-                    {(Object.keys(relativeAnchorLabels) as RelativeAnchor[]).map((key) => (
-                      <option key={key} value={key}>{relativeAnchorLabels[key]}</option>
-                    ))}
+                <div className="two-point-header">
+                  <span className="two-point-badge two-point-b">B</span>
+                  <span className="two-point-name">{secondItem.name}</span>
+                </div>
+                {computedGaps && (
+                  <div className="two-point-gaps">
+                    <span>X間隔: <strong>{computedGaps.xGap.toFixed(2)} m</strong></span>
+                    <span>Y間隔: <strong>{computedGaps.yGap.toFixed(2)} m</strong></span>
+                  </div>
+                )}
+                <label>調整軸
+                  <select value={twoPointAxis} onChange={(event) => {
+                    const axis = event.target.value as "x" | "y";
+                    setTwoPointAxis(axis);
+                    applyTwoPointGap(twoPointTargetGap, axis);
+                  }}>
+                    <option value="x">X方向（横）</option>
+                    <option value="y">Y方向（縦）</option>
                   </select>
                 </label>
-                <label>距離 m
-                  <input type="number" value={relativeDistance} min={0} step={0.5}
-                    onChange={(event) => setRelativeDistance(Number(event.target.value))} />
+                <label>間隔 m
+                  <input type="number" value={twoPointTargetGap} min={0} step={0.1}
+                    onChange={(event) => {
+                      const gap = Number(event.target.value);
+                      setTwoPointTargetGap(gap);
+                      applyTwoPointGap(gap, twoPointAxis);
+                    }} />
                 </label>
-                {pendingRelativeSnap ? (
-                  <div className="snap-pending">
-                    ✓ 次の配置: X={pendingRelativeSnap.x.toFixed(2)}, Y={pendingRelativeSnap.y.toFixed(2)}
-                  </div>
-                ) : null}
-                <button className="primary-button" style={{ marginTop: 4 }} onClick={applyRelativePlacement}>
-                  この距離に次の設備を配置
-                </button>
-
-                {/* 2点間距離設定（Ctrl+クリックで2つ目を選択時に表示） */}
-                {secondItem ? (
-                  <>
-                    <div className="section-divider">2点間の距離設定</div>
-                    <div className="two-point-header">
-                      <span className="two-point-badge two-point-a">A</span>
-                      <span className="two-point-name">{selectedItem.name}</span>
-                    </div>
-                    <div className="two-point-header">
-                      <span className="two-point-badge two-point-b">B</span>
-                      <span className="two-point-name">{secondItem.name}</span>
-                    </div>
-                    {computedGaps && (
-                      <div className="two-point-gaps">
-                        <span>X間隔: <strong>{computedGaps.xGap.toFixed(2)} m</strong></span>
-                        <span>Y間隔: <strong>{computedGaps.yGap.toFixed(2)} m</strong></span>
-                      </div>
-                    )}
-                    <label>調整軸
-                      <select value={twoPointAxis} onChange={(event) => setTwoPointAxis(event.target.value as "x" | "y")}>
-                        <option value="x">X方向（横）</option>
-                        <option value="y">Y方向（縦）</option>
-                      </select>
-                    </label>
-                    <label>目標間隔 m
-                      <input type="number" value={twoPointTargetGap} min={0} step={0.1}
-                        onChange={(event) => setTwoPointTargetGap(Number(event.target.value))} />
-                    </label>
-                    <button className="primary-button" style={{ marginTop: 4 }} onClick={applyTwoPointGap}>
-                      Bを移動して適用
-                    </button>
-                  </>
-                ) : (
-                  <p className="section-desc" style={{ marginTop: 8 }}>Ctrl+クリックで2つ目を選択→間隔設定</p>
-                )}
+                <p className="section-desc">数値を変えるとBがリアルタイムに移動します</p>
               </>
             ) : (
-              <p>設備をクリックして選択</p>
+              <>
+                <div className="panel-title">選択中</div>
+                {selectedItem ? (
+                  <>
+                    <label>名称<input value={selectedItem.name} onChange={(event) => updateItem(selectedItem.id, { name: event.target.value })} /></label>
+                    <label>アイコン<input value={selectedItem.icon} maxLength={6} onChange={(event) => updateItem(selectedItem.id, { icon: event.target.value })} /></label>
+                    <label>X m<input type="number" value={selectedItem.x} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { x: Number(event.target.value) })} /></label>
+                    <label>Y m<input type="number" value={selectedItem.y} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { y: Number(event.target.value) })} /></label>
+                    <label>幅 m<input type="number" value={selectedItem.width} step={0.1} onChange={(event) => updateItem(selectedItem.id, { width: Number(event.target.value) })} /></label>
+                    <label>奥行 m<input type="number" value={selectedItem.depth} step={0.1} onChange={(event) => updateItem(selectedItem.id, { depth: Number(event.target.value) })} /></label>
+                    <label>高さ m<input type="number" value={selectedItem.height} step={0.1} onChange={(event) => updateItem(selectedItem.id, { height: Number(event.target.value) })} /></label>
+                    <label>回転<select value={selectedItem.rotation} onChange={(event) => updateItem(selectedItem.id, { rotation: Number(event.target.value) as LayoutItem["rotation"] })}>
+                      {[0, 90, 180, 270].map((angle) => <option key={angle} value={angle}>{angle}°</option>)}
+                    </select></label>
+                    <div className="color-panel">
+                      <div className="field-title">色</div>
+                      <div className="color-grid">
+                        {itemColorPalette.map((color) => (
+                          <button
+                            key={color}
+                            className={selectedItem.color.toLowerCase() === color.toLowerCase() ? "color-swatch active" : "color-swatch"}
+                            style={{ backgroundColor: color }}
+                            onClick={() => updateItem(selectedItem.id, { color })}
+                            aria-label={`色 ${color}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <p className="section-desc" style={{ marginTop: 8 }}>Ctrl+クリックで2つ目を選択 → 間隔設定</p>
+                  </>
+                ) : (
+                  <p>設備をクリックして選択</p>
+                )}
+              </>
             )}
           </aside>
         </section>
@@ -1322,10 +1248,11 @@ function addTopIcon(group: THREE.Group, item: LayoutItem, itemNumber: number, wi
     const spriteW = Math.min(1.6, Math.max(0.5, Math.min(width, depth) * 0.85));
     const spriteH = spriteW * (320 / 512);
     const sprite = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
+      new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false })
     );
     sprite.scale.set(spriteW, spriteH, 1);
     sprite.position.set(0, height + 0.4, 0);
+    sprite.renderOrder = 10;
     group.add(sprite);
   }
 }
