@@ -1176,7 +1176,7 @@ function createWindowedWall(width: number, depth: number, height: number) {
   const group = new THREE.Group();
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(width, height, depth),
-    new THREE.MeshLambertMaterial({ color: "#94a3b8", transparent: true, opacity: 0.9 })
+    new THREE.MeshLambertMaterial({ color: "#94a3b8", transparent: true, opacity: 0.9, depthWrite: false })
   );
   body.position.set(0, height / 2, 0);
   group.add(body);
@@ -1290,6 +1290,7 @@ function addTopIcon(group: THREE.Group, item: LayoutItem, itemNumber: number, wi
     );
     sprite.scale.set(spriteW, spriteH, 1);
     sprite.position.set(0, height + 0.4, 0);
+    sprite.renderOrder = 1; // render after opaque geometry writes depth
     group.add(sprite);
   }
 }
