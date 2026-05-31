@@ -11,6 +11,7 @@ type ViewMode = "2d" | "3d";
 type OrbitTargetMode = "factory" | "selected" | "walk";
 type WallSide = "north" | "east" | "south" | "west";
 type EdgePair = "right-left" | "left-right" | "cx-cx" | "bottom-top" | "top-bottom" | "cy-cy";
+type Waypoint = { id: string; x: number; y: number };
 
 type EquipmentTemplate = {
   id: string;
@@ -175,6 +176,11 @@ function App() {
   const placedListRef = useRef<HTMLDivElement | null>(null);
   // Feature 2: present mode signal ref
   const presentSignalRef = useRef<(() => void) | null>(null);
+  // ウェイポイント
+  const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
+  const [waypointMode, setWaypointMode] = useState(false);
+  const waypointsRef = useRef<Waypoint[]>([]);
+  waypointsRef.current = waypoints;
   // 2点間距離設定
   const [secondSelectedId, setSecondSelectedId] = useState<string | null>(null);
   const [twoPointTargetGap, setTwoPointTargetGap] = useState(0);
@@ -504,15 +510,30 @@ function App() {
           {viewMode === "3d" ? (
             <button className={orbitTargetMode === "walk" ? "active view-button" : "view-button"} onClick={() => setOrbitTargetMode("walk")}>歩行</button>
           ) : null}
+          {/* ウェイポイントモードトグル（2Dのみ） */}
+          {viewMode === "2d" ? (
+            <button
+              className={waypointMode ? "active view-button" : "view-button"}
+              onClick={() => setWaypointMode((v) => !v)}
+              title="クリックでカメラ通過点を追加"
+            >
+              📍 ルート設定
+            </button>
+          ) : null}
+          {viewMode === "2d" && waypoints.length > 0 ? (
+            <button onClick={() => setWaypoints([])} title="全ウェイポイント削除">
+              ルート消去 ({waypoints.length})
+            </button>
+          ) : null}
           {/* Feature 2: present mode button */}
           {viewMode === "3d" ? (
             <button
               className="view-button"
               onClick={() => presentSignalRef.current?.()}
               disabled={orbitTargetMode === "walk"}
-              title="俯瞰から歩行視点へ滑らかに遷移（2秒）"
+              title={waypoints.length > 0 ? `ウェイポイント${waypoints.length}点を巡回` : "俯瞰から歩行視点へ遷移"}
             >
-              🎬 プレゼン
+              🎬 プレゼン {waypoints.length > 0 ? `(${waypoints.length}点)` : ""}
             </button>
           ) : null}
           <button onClick={rotateSelected} disabled={!selectedItem}><RotateCw size={16} />回転</button>
@@ -543,6 +564,7 @@ function App() {
                 style={{
                   width: factory.width * pxPerMeter,
                   height: factory.depth * pxPerMeter,
+                  cursor: waypointMode ? "crosshair" : undefined,
                   backgroundImage: `
                     linear-gradient(#94a3b8 1.5px, transparent 1.5px),
                     linear-gradient(90deg, #94a3b8 1.5px, transparent 1.5px),
@@ -557,7 +579,17 @@ function App() {
                   `
                 }}
                 onPointerMove={moveDrag}
-                onPointerUp={endDrag}
+                onPointerUp={(event) => {
+                  if (waypointMode && !drag) {
+                    const rect = boardRef.current?.getBoundingClientRect();
+                    if (rect) {
+                      const x = snap(clamp((event.clientX - rect.left) / pxPerMeter, 0, factory.width), factory.grid);
+                      const y = snap(clamp((event.clientY - rect.top) / pxPerMeter, 0, factory.depth), factory.grid);
+                      setWaypoints((prev) => [...prev, { id: makeId("wp"), x, y }]);
+                    }
+                  }
+                  endDrag(event);
+                }}
               >
                 <div className="dimension dim-width">{factory.width} m</div>
                 <div className="dimension dim-depth">{factory.depth} m</div>
@@ -572,6 +604,22 @@ function App() {
                     }}
                   >
                     ({x},{y})
+                  </div>
+                ))}
+                {/* ウェイポイントマーカー */}
+                {waypoints.map((wp, i) => (
+                  <div
+                    key={wp.id}
+                    className="waypoint-marker"
+                    style={{ left: wp.x * pxPerMeter, top: wp.y * pxPerMeter }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                  >
+                    W{i + 1}
+                    <button
+                      className="waypoint-delete"
+                      onClick={() => setWaypoints((prev) => prev.filter((w) => w.id !== wp.id))}
+                      title="削除"
+                    >×</button>
                   </div>
                 ))}
                 {wallSides.map((side) => (
@@ -608,6 +656,7 @@ function App() {
               orbitTargetMode={orbitTargetMode}
               presentSignalRef={presentSignalRef}
               onPresentDone={() => setOrbitTargetMode("walk")}
+              waypointsRef={waypointsRef}
             />
           )}
 
@@ -786,13 +835,14 @@ function LayoutItemView({ item, selected, secondSelected, area, pxPerMeter, onPo
   );
 }
 
-function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSignalRef, onPresentDone }: {
+function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSignalRef, onPresentDone, waypointsRef }: {
   factory: ProjectFile["factory"];
   items: LayoutItem[];
   selectedId: string | null;
   orbitTargetMode: OrbitTargetMode;
   presentSignalRef?: React.MutableRefObject<(() => void) | null>;
   onPresentDone?: () => void;
+  waypointsRef?: React.MutableRefObject<Waypoint[]>;
 }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   // Keep latest onPresentDone callback accessible from inside the tween closure without re-running the effect
@@ -917,36 +967,82 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
     });
     resizeObserver.observe(mount);
 
-    // Feature 2: present mode – tween from orbit camera to walk start position
+    // Feature 2: present mode – waypoint walkthrough or orbit→walk fallback
     let activeTween: Tween<{ x: number; y: number; z: number }> | null = null;
     let tweening = false;
+    let cancelWalkthrough = false;
+
+    const easeInOut = (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
+    const startOrbitToWalk = () => {
+      const walkEndPos = {
+        x: Math.min(1.5, factory.width * 0.25),
+        y: 1.6,
+        z: Math.min(1.5, factory.depth * 0.25)
+      };
+      const tweenObj = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+      activeTween = new Tween(tweenObj)
+        .to(walkEndPos, 2000)
+        .easing(Easing.Quadratic.InOut)
+        .onUpdate((pos) => {
+          camera.position.set(pos.x, pos.y, pos.z);
+          camera.lookAt(factory.width / 2, 1.0, factory.depth / 2);
+        })
+        .onComplete(() => {
+          tweening = false;
+          activeTween = null;
+          onPresentDoneRef.current?.();
+        })
+        .start();
+    };
+
+    const chainWaypoints = (wps: Waypoint[], idx: number) => {
+      if (cancelWalkthrough || idx >= wps.length) {
+        tweening = false;
+        activeTween = null;
+        if (controls) controls.enabled = true;
+        return;
+      }
+      const wp = wps[idx];
+      const toPos = { x: wp.x, y: 1.6, z: wp.y };
+      const tweenObj = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+      const nextWp = wps[idx + 1];
+      const lookTarget = nextWp
+        ? new THREE.Vector3(nextWp.x, 1.6, nextWp.y)
+        : new THREE.Vector3(
+            wp.x + (wp.x - (idx > 0 ? wps[idx - 1].x : wp.x)),
+            1.6,
+            wp.y + (wp.y - (idx > 0 ? wps[idx - 1].y : wp.y - 1))
+          );
+
+      activeTween = new Tween(tweenObj)
+        .to(toPos, 2500)
+        .easing(Easing.Quadratic.InOut)
+        .onUpdate((pos) => {
+          camera.position.set(pos.x, pos.y, pos.z);
+          camera.lookAt(lookTarget.x, lookTarget.y, lookTarget.z);
+        })
+        .onComplete(() => {
+          activeTween = null;
+          if (cancelWalkthrough) { tweening = false; if (controls) controls.enabled = true; return; }
+          // 1秒停止してから次へ
+          setTimeout(() => chainWaypoints(wps, idx + 1), 1000);
+        })
+        .start();
+    };
 
     if (presentSignalRef && orbitTargetMode !== "walk") {
       presentSignalRef.current = () => {
         if (tweening) return;
         tweening = true;
+        cancelWalkthrough = false;
         if (controls) controls.enabled = false;
-
-        const walkEndPos = {
-          x: Math.min(1.5, factory.width * 0.25),
-          y: 1.6,
-          z: Math.min(1.5, factory.depth * 0.25)
-        };
-        const tweenObj = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
-
-        activeTween = new Tween(tweenObj)
-          .to(walkEndPos, 2000)
-          .easing(Easing.Quadratic.InOut)
-          .onUpdate((pos) => {
-            camera.position.set(pos.x, pos.y, pos.z);
-            camera.lookAt(factory.width / 2, 1.0, factory.depth / 2);
-          })
-          .onComplete(() => {
-            tweening = false;
-            activeTween = null;
-            onPresentDoneRef.current?.();
-          })
-          .start();
+        const wps = waypointsRef?.current ?? [];
+        if (wps.length > 0) {
+          chainWaypoints(wps, 0);
+        } else {
+          startOrbitToWalk();
+        }
       };
     }
 
@@ -1002,21 +1098,22 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
 
     const clock = new THREE.Clock();
     let animation = 0;
-    const render = () => {
+    const render = (timestamp: number) => {
       animation = requestAnimationFrame(render);
-      tweenUpdate(); // Feature 2: advance tween animations
+      tweenUpdate(timestamp); // pass RAF timestamp for accurate tween timing
       if (orbitTargetMode === "walk") {
         updateWalkCamera(camera, walkKeys, walkState.speed, clock.getDelta(), factory);
       } else {
         clock.getDelta();
       }
       renderer.render(scene, camera);
-      labelRenderer.render(scene, camera); // Feature 1: CSS2D billboard rendering
+      labelRenderer.render(scene, camera);
     };
-    render();
+    requestAnimationFrame(render);
 
     return () => {
       cancelAnimationFrame(animation);
+      cancelWalkthrough = true;
       activeTween?.stop();
       resizeObserver.disconnect();
       controls?.dispose();
