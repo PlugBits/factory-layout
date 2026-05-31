@@ -858,25 +858,6 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
       model.rotation.y = THREE.MathUtils.degToRad(item.rotation);
       scene.add(model);
 
-      // Feature 1: billboard label attached to each equipment model
-      const labelDiv = document.createElement("div");
-      labelDiv.textContent = item.name;
-      labelDiv.style.cssText = [
-        "background:rgba(255,255,255,0.88)",
-        "color:#0f172a",
-        "padding:2px 7px",
-        "border-radius:4px",
-        "font-size:11px",
-        "font-weight:700",
-        "white-space:nowrap",
-        "pointer-events:none",
-        "box-shadow:0 1px 3px rgba(0,0,0,0.15)"
-      ].join(";");
-      const labelObj = new CSS2DObject(labelDiv);
-      // Place above the item (Y rotation of group doesn't affect label's Y position in world space)
-      labelObj.position.set(0, Math.max(item.height, 0.05) + 0.3, 0);
-      model.add(labelObj);
-
       if (item.id === selectedId) {
         const outline = createSelectionOutline(item);
         outline.position.copy(model.position);
@@ -1230,20 +1211,15 @@ function addFrame(group: THREE.Group, width: number, depth: number, height: numb
 
 function addTopIcon(group: THREE.Group, item: LayoutItem, itemNumber: number, width: number, depth: number, height: number) {
   const texture = createTopIconTexture(item, itemNumber);
-  const iconWidth = Math.min(1.9, Math.max(0.62, width * 0.72));
-  const iconDepth = Math.min(0.62, Math.max(0.38, depth * 0.72));
-  const label = new THREE.Mesh(
-    new THREE.PlaneGeometry(iconWidth, iconDepth),
-    new THREE.MeshBasicMaterial({
-      map: texture,
-      transparent: true,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    })
+  // Sprite always faces the camera (billboard). Canvas is 512×320, aspect = 1.6
+  const spriteW = Math.min(1.6, Math.max(0.5, Math.min(width, depth) * 0.85));
+  const spriteH = spriteW * (320 / 512);
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
   );
-  label.rotation.x = -Math.PI / 2;
-  label.position.set(0, height + 0.012, 0);
-  group.add(label);
+  sprite.scale.set(spriteW, spriteH, 1);
+  sprite.position.set(0, height / 2, 0); // center of item height
+  group.add(sprite);
 }
 
 function createTopIconTexture(item: LayoutItem, itemNumber: number) {
