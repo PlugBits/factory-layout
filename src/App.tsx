@@ -926,7 +926,7 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
     }
 
     for (const [index, item] of items.entries()) {
-      const model = createEquipmentModel(item, index + 1);
+      const model = createEquipmentModel(item);
       model.position.set(item.x + item.width / 2, 0, item.y + item.depth / 2);
       model.rotation.y = THREE.MathUtils.degToRad(item.rotation);
       scene.add(model);
@@ -1351,11 +1351,11 @@ function createWorkerModel(item: LayoutItem): THREE.Group {
   return group;
 }
 
-function createEquipmentModel(item: LayoutItem, itemNumber: number) {
+function createEquipmentModel(item: LayoutItem) {
   // Worker gets a humanoid model instead of a plain box
   if (item.templateId === "worker") {
     const group = createWorkerModel(item);
-    addTopIcon(group, item, itemNumber, item.width, item.depth, item.height);
+    addTopIcon(group, item, item.width, item.depth, item.height);
     return group;
   }
 
@@ -1387,7 +1387,7 @@ function createEquipmentModel(item: LayoutItem, itemNumber: number) {
   edge.position.copy(body.position);
   group.add(edge);
 
-  addTopIcon(group, item, itemNumber, w, d, visibleHeight);
+  addTopIcon(group, item, w, d, visibleHeight);
 
   if (id === "crane") {
     addFrame(group, w, d, h);
@@ -1433,15 +1433,15 @@ function addFrame(group: THREE.Group, width: number, depth: number, height: numb
   addBeam(0.08, 0.08, depth, width / 2, height, 0);
 }
 
-function addTopIcon(group: THREE.Group, item: LayoutItem, itemNumber: number, width: number, depth: number, height: number) {
-  const texture = createTopIconTexture(item, itemNumber);
+function addTopIcon(group: THREE.Group, item: LayoutItem, width: number, depth: number, height: number) {
+  const texture = createTopIconTexture(item);
 
   if (isAreaItem(item)) {
-    // Area items (passageways, floors): flat icon on the top surface
-    const iconWidth = Math.min(1.9, Math.max(0.62, width * 0.72));
-    const iconDepth = Math.min(0.62, Math.max(0.38, depth * 0.72));
+    // Fixed size (canvas 512×320 = aspect 1.6) – never scales with item dimensions
+    const iconW = 0.9;
+    const iconH = iconW / (512 / 320); // 0.5625
     const label = new THREE.Mesh(
-      new THREE.PlaneGeometry(iconWidth, iconDepth),
+      new THREE.PlaneGeometry(iconW, iconH),
       new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, depthWrite: false })
     );
     label.rotation.x = -Math.PI / 2;
@@ -1456,12 +1456,12 @@ function addTopIcon(group: THREE.Group, item: LayoutItem, itemNumber: number, wi
     );
     sprite.scale.set(spriteW, spriteH, 1);
     sprite.position.set(0, height + 0.4, 0);
-    sprite.renderOrder = 1; // render after opaque geometry writes depth
+    sprite.renderOrder = 1;
     group.add(sprite);
   }
 }
 
-function createTopIconTexture(item: LayoutItem, itemNumber: number) {
+function createTopIconTexture(item: LayoutItem) {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
   canvas.height = 320;
@@ -1476,12 +1476,19 @@ function createTopIconTexture(item: LayoutItem, itemNumber: number) {
   ctx.lineWidth = 10;
   ctx.stroke();
 
+  // Item name – shrink font until it fits
   ctx.fillStyle = "#0f172a";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = "bold 112px Arial, sans-serif";
-  ctx.fillText(String(itemNumber).padStart(2, "0"), 256, 108);
+  let fontSize = 72;
+  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  while (ctx.measureText(item.name).width > 450 && fontSize > 28) {
+    fontSize -= 4;
+    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  }
+  ctx.fillText(item.name, 256, 104);
 
+  // Icon badge
   ctx.fillStyle = item.color;
   roundRect(ctx, 118, 186, 276, 76, 18);
   ctx.fill();
