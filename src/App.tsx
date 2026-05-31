@@ -10,6 +10,7 @@ type Category = "machine" | "logistics" | "work" | "building" | "utility" | "saf
 type ViewMode = "2d" | "3d";
 type OrbitTargetMode = "factory" | "selected" | "walk";
 type WallSide = "north" | "east" | "south" | "west";
+type EdgePair = "right-left" | "left-right" | "cx-cx" | "bottom-top" | "top-bottom" | "cy-cy";
 
 type EquipmentTemplate = {
   id: string;
@@ -176,8 +177,8 @@ function App() {
   const presentSignalRef = useRef<(() => void) | null>(null);
   // 2点間距離設定
   const [secondSelectedId, setSecondSelectedId] = useState<string | null>(null);
-  const [twoPointTargetGap, setTwoPointTargetGap] = useState(0.5);
-  const [twoPointAxis, setTwoPointAxis] = useState<"x" | "y">("x");
+  const [twoPointTargetGap, setTwoPointTargetGap] = useState(0);
+  const [edgePair, setEdgePair] = useState<EdgePair>("right-left");
 
   const basePxPerMeter = useMemo(() => Math.max(22, Math.min(52, 960 / factory.width)), [factory.width]);
   const pxPerMeter = basePxPerMeter * zoom;
@@ -190,19 +191,11 @@ function App() {
     [items]
   );
 
-  // 2点間の辺-辺距離（正=間隔あり、負=重複）
-  const computedGaps = useMemo(() => {
+  // 選択中のedgePairで計算した現在の実際の間隔（リアルタイム更新）
+  const currentGap = useMemo(() => {
     if (!selectedItem || !secondItem) return null;
-    const A = selectedItem;
-    const B = secondItem;
-    const xGap = (B.x + B.width / 2) >= (A.x + A.width / 2)
-      ? B.x - (A.x + A.width)
-      : A.x - (B.x + B.width);
-    const yGap = (B.y + B.depth / 2) >= (A.y + A.depth / 2)
-      ? B.y - (A.y + A.depth)
-      : A.y - (B.y + B.depth);
-    return { xGap, yGap };
-  }, [selectedItem, secondItem]);
+    return computeEdgeGap(selectedItem, secondItem, edgePair);
+  }, [selectedItem, secondItem, edgePair]);
 
   // Feature 3: 2D grid coordinate labels at major grid intersections
   const majorGridSize = Math.max(1, factory.majorGrid || 4);
@@ -248,20 +241,14 @@ function App() {
     updateItem(item.id, { x, y });
   };
 
-  // 2点間の間隔をリアルタイムで適用（gap・axis を明示的に受け取り即移動）
-  const applyTwoPointGap = (gap: number, axis: "x" | "y") => {
+  // Bを移動して指定edgePairの間隔をgapに合わせる（負値=重複を許容、境界clampなし）
+  const applyTwoPointGap = (gap: number, pair: EdgePair) => {
     if (!selectedItem || !secondItem) return;
-    const A = selectedItem;
-    const B = secondItem;
-    if (axis === "x") {
-      const bIsRight = (B.x + B.width / 2) >= (A.x + A.width / 2);
-      const newBX = bIsRight ? A.x + A.width + gap : A.x - B.width - gap;
-      updateItem(B.id, { x: snap(clamp(newBX, 0, factory.width - B.width), factory.grid) });
-    } else {
-      const bIsBelow = (B.y + B.depth / 2) >= (A.y + A.depth / 2);
-      const newBY = bIsBelow ? A.y + A.depth + gap : A.y - B.depth - gap;
-      updateItem(B.id, { y: snap(clamp(newBY, 0, factory.depth - B.depth), factory.grid) });
-    }
+    const patch = getEdgePatch(selectedItem, secondItem, pair, gap);
+    const snapped: Partial<LayoutItem> = {};
+    if (patch.x !== undefined) snapped.x = snap(patch.x, factory.grid);
+    if (patch.y !== undefined) snapped.y = snap(patch.y, factory.grid);
+    updateItem(secondItem.id, snapped);
   };
 
   useEffect(() => {
@@ -283,6 +270,17 @@ function App() {
   useEffect(() => {
     setSecondSelectedId(null);
   }, [selectedId]);
+
+  // Ctrl+クリックで2つ目を選んだ瞬間: 位置関係からedgePairを自動選択し現在値を初期値に
+  useEffect(() => {
+    if (!secondSelectedId) return;
+    const A = items.find((i) => i.id === selectedId);
+    const B = items.find((i) => i.id === secondSelectedId);
+    if (!A || !B) return;
+    const pair = autoDetectEdgePair(A, B);
+    setEdgePair(pair);
+    setTwoPointTargetGap(Number(computeEdgeGap(A, B, pair).toFixed(3)));
+  }, [secondSelectedId]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -673,31 +671,33 @@ function App() {
                   <span className="two-point-badge two-point-b">B</span>
                   <span className="two-point-name">{secondItem.name}</span>
                 </div>
-                {computedGaps && (
-                  <div className="two-point-gaps">
-                    <span>X間隔: <strong>{computedGaps.xGap.toFixed(2)} m</strong></span>
-                    <span>Y間隔: <strong>{computedGaps.yGap.toFixed(2)} m</strong></span>
-                  </div>
-                )}
-                <label>調整軸
-                  <select value={twoPointAxis} onChange={(event) => {
-                    const axis = event.target.value as "x" | "y";
-                    setTwoPointAxis(axis);
-                    applyTwoPointGap(twoPointTargetGap, axis);
+                <label>基準点
+                  <select value={edgePair} onChange={(event) => {
+                    const pair = event.target.value as EdgePair;
+                    setEdgePair(pair);
+                    // 辺が変わったら現在値を読み直す（入力値は更新しない→ユーザーが次に入力したときに適用）
+                    const cur = computeEdgeGap(selectedItem, secondItem, pair);
+                    setTwoPointTargetGap(Number(cur.toFixed(3)));
                   }}>
-                    <option value="x">X方向（横）</option>
-                    <option value="y">Y方向（縦）</option>
+                    {(Object.keys(edgePairLabels) as EdgePair[]).map((k) => (
+                      <option key={k} value={k}>{edgePairLabels[k]}</option>
+                    ))}
                   </select>
                 </label>
-                <label>間隔 m
-                  <input type="number" value={twoPointTargetGap} min={0} step={0.1}
+                {currentGap !== null && (
+                  <div className="two-point-gaps">
+                    <span>現在: <strong>{currentGap.toFixed(3)} m</strong></span>
+                    <span className="two-point-hint">(負=重複)</span>
+                  </div>
+                )}
+                <label>目標間隔 m
+                  <input type="number" value={twoPointTargetGap} step={0.01}
                     onChange={(event) => {
                       const gap = Number(event.target.value);
                       setTwoPointTargetGap(gap);
-                      applyTwoPointGap(gap, twoPointAxis);
+                      applyTwoPointGap(gap, edgePair);
                     }} />
                 </label>
-                <p className="section-desc">数値を変えるとBがリアルタイムに移動します</p>
               </>
             ) : (
               <>
@@ -1061,6 +1061,44 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+const edgePairLabels: Record<EdgePair, string> = {
+  "right-left": "A右端 → B左端",
+  "left-right": "A左端 → B右端",
+  "cx-cx":      "A中心X → B中心X",
+  "bottom-top": "A下端 → B上端",
+  "top-bottom": "A上端 → B下端",
+  "cy-cy":      "A中心Y → B中心Y",
+};
+
+function computeEdgeGap(A: LayoutItem, B: LayoutItem, pair: EdgePair): number {
+  switch (pair) {
+    case "right-left": return B.x - (A.x + A.width);
+    case "left-right": return A.x - (B.x + B.width);
+    case "cx-cx":      return (B.x + B.width / 2) - (A.x + A.width / 2);
+    case "bottom-top": return B.y - (A.y + A.depth);
+    case "top-bottom": return A.y - (B.y + B.depth);
+    case "cy-cy":      return (B.y + B.depth / 2) - (A.y + A.depth / 2);
+  }
+}
+
+function getEdgePatch(A: LayoutItem, B: LayoutItem, pair: EdgePair, gap: number): Partial<LayoutItem> {
+  switch (pair) {
+    case "right-left": return { x: A.x + A.width + gap };
+    case "left-right": return { x: A.x - B.width - gap };
+    case "cx-cx":      return { x: A.x + A.width / 2 + gap - B.width / 2 };
+    case "bottom-top": return { y: A.y + A.depth + gap };
+    case "top-bottom": return { y: A.y - B.depth - gap };
+    case "cy-cy":      return { y: A.y + A.depth / 2 + gap - B.depth / 2 };
+  }
+}
+
+function autoDetectEdgePair(A: LayoutItem, B: LayoutItem): EdgePair {
+  const dx = (B.x + B.width / 2) - (A.x + A.width / 2);
+  const dy = (B.y + B.depth / 2) - (A.y + A.depth / 2);
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? "right-left" : "left-right";
+  return dy >= 0 ? "bottom-top" : "top-bottom";
+}
+
 function getArrowMovement(code: string) {
   if (code === "ArrowLeft") return { dx: -1, dy: 0 };
   if (code === "ArrowRight") return { dx: 1, dy: 0 };
@@ -1248,11 +1286,10 @@ function addTopIcon(group: THREE.Group, item: LayoutItem, itemNumber: number, wi
     const spriteW = Math.min(1.6, Math.max(0.5, Math.min(width, depth) * 0.85));
     const spriteH = spriteW * (320 / 512);
     const sprite = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false })
+      new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
     );
     sprite.scale.set(spriteW, spriteH, 1);
     sprite.position.set(0, height + 0.4, 0);
-    sprite.renderOrder = 10;
     group.add(sprite);
   }
 }
