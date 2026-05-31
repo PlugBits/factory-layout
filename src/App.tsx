@@ -3,11 +3,14 @@ import { Box, Copy, Download, Eye, Grid2X2, RotateCw, Save, Trash2, Upload, Zoom
 import { toPng } from "html-to-image";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { CSS2DRenderer, CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
+import { Tween, Easing, update as tweenUpdate } from "@tweenjs/tween.js";
 
 type Category = "machine" | "logistics" | "work" | "building" | "utility" | "safety";
 type ViewMode = "2d" | "3d";
 type OrbitTargetMode = "factory" | "selected" | "walk";
 type WallSide = "north" | "east" | "south" | "west";
+type RelativeAnchor = "right" | "left" | "top" | "bottom" | "center";
 
 type EquipmentTemplate = {
   id: string;
@@ -109,6 +112,14 @@ const itemColorPalette = [
   "#111827"
 ];
 
+const relativeAnchorLabels: Record<RelativeAnchor, string> = {
+  right: "右端",
+  left: "左端",
+  bottom: "下端",
+  top: "上端",
+  center: "中心"
+};
+
 const wallSides: WallSide[] = ["north", "east", "south", "west"];
 const wallSideLabels: Record<WallSide, string> = {
   north: "上辺",
@@ -166,10 +177,16 @@ function App() {
   const [zoom, setZoom] = useState(1);
   const [drag, setDrag] = useState<{ id: string; dx: number; dy: number } | null>(null);
   const [panDrag, setPanDrag] = useState<{ x: number; y: number } | null>(null);
+  // Feature 4: relative placement state
+  const [relativeAnchor, setRelativeAnchor] = useState<RelativeAnchor>("right");
+  const [relativeDistance, setRelativeDistance] = useState(1.0);
+  const [pendingRelativeSnap, setPendingRelativeSnap] = useState<{ x: number; y: number } | null>(null);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const placedListRef = useRef<HTMLDivElement | null>(null);
+  // Feature 2: present mode signal ref
+  const presentSignalRef = useRef<(() => void) | null>(null);
 
   const basePxPerMeter = useMemo(() => Math.max(22, Math.min(52, 960 / factory.width)), [factory.width]);
   const pxPerMeter = basePxPerMeter * zoom;
@@ -181,17 +198,39 @@ function App() {
     [items]
   );
 
+  // Feature 3: 2D grid coordinate labels at major grid intersections
+  const majorGridSize = Math.max(1, factory.majorGrid || 4);
+  const gridCoordLabels = useMemo(() => {
+    const labels: Array<{ x: number; y: number }> = [];
+    for (let xm = 0; xm <= factory.width; xm += majorGridSize) {
+      for (let ym = 0; ym <= factory.depth; ym += majorGridSize) {
+        labels.push({ x: xm, y: ym });
+      }
+    }
+    return labels;
+  }, [factory.width, factory.depth, majorGridSize]);
+
+  // Feature 4: modified addSelectedTemplate – uses pendingRelativeSnap when set
   const addSelectedTemplate = () => {
     const template = selectedTemplate;
     const id = makeId("item");
+    let startX = 1;
+    let startY = 1;
+
+    if (pendingRelativeSnap) {
+      startX = pendingRelativeSnap.x;
+      startY = pendingRelativeSnap.y;
+      setPendingRelativeSnap(null);
+    }
+
     setItems((current) => [
       ...current,
       {
         id,
         templateId: template.id,
         name: template.name,
-        x: 1,
-        y: 1,
+        x: snap(startX, factory.grid),
+        y: snap(startY, factory.grid),
         width: template.width,
         depth: template.depth,
         height: template.height,
@@ -211,6 +250,37 @@ function App() {
     const x = snap(Math.max(0, Math.min(factory.width - item.width, rawX)), factory.grid);
     const y = snap(Math.max(0, Math.min(factory.depth - item.depth, rawY)), factory.grid);
     updateItem(item.id, { x, y });
+  };
+
+  // Feature 4: compute and store relative placement position for next item
+  const applyRelativePlacement = () => {
+    if (!selectedItem) return;
+    const template = selectedTemplate;
+    let x = selectedItem.x;
+    let y = selectedItem.y;
+
+    switch (relativeAnchor) {
+      case "right":
+        x = selectedItem.x + selectedItem.width + relativeDistance;
+        break;
+      case "left":
+        x = selectedItem.x - template.width - relativeDistance;
+        break;
+      case "bottom":
+        y = selectedItem.y + selectedItem.depth + relativeDistance;
+        break;
+      case "top":
+        y = selectedItem.y - template.depth - relativeDistance;
+        break;
+      case "center":
+        x = selectedItem.x + (selectedItem.width - template.width) / 2;
+        y = selectedItem.y + (selectedItem.depth - template.depth) / 2;
+        break;
+    }
+
+    x = clamp(x, 0, Math.max(0, factory.width - template.width));
+    y = clamp(y, 0, Math.max(0, factory.depth - template.depth));
+    setPendingRelativeSnap({ x, y });
   };
 
   useEffect(() => {
@@ -444,6 +514,17 @@ function App() {
           {viewMode === "3d" ? (
             <button className={orbitTargetMode === "walk" ? "active view-button" : "view-button"} onClick={() => setOrbitTargetMode("walk")}>歩行</button>
           ) : null}
+          {/* Feature 2: present mode button */}
+          {viewMode === "3d" ? (
+            <button
+              className="view-button"
+              onClick={() => presentSignalRef.current?.()}
+              disabled={orbitTargetMode === "walk"}
+              title="俯瞰から歩行視点へ滑らかに遷移（2秒）"
+            >
+              🎬 プレゼン
+            </button>
+          ) : null}
           <button onClick={rotateSelected} disabled={!selectedItem}><RotateCw size={16} />回転</button>
           <button onClick={deleteSelected} disabled={!selectedItem}>削除</button>
           <button onClick={saveJson}><Save size={16} />JSON保存</button>
@@ -490,6 +571,19 @@ function App() {
               >
                 <div className="dimension dim-width">{factory.width} m</div>
                 <div className="dimension dim-depth">{factory.depth} m</div>
+                {/* Feature 3: grid coordinate labels at major grid intersections */}
+                {gridCoordLabels.map(({ x, y }) => (
+                  <div
+                    key={`gc-${x}-${y}`}
+                    className="grid-coord-label"
+                    style={{
+                      left: x * pxPerMeter,
+                      top: y * pxPerMeter
+                    }}
+                  >
+                    ({x},{y})
+                  </div>
+                ))}
                 {wallSides.map((side) => (
                   <button
                     key={side}
@@ -516,7 +610,14 @@ function App() {
               </div>
             </div>
           ) : (
-            <ThreePreview factory={factory} items={items} selectedId={selectedId} orbitTargetMode={orbitTargetMode} />
+            <ThreePreview
+              factory={factory}
+              items={items}
+              selectedId={selectedId}
+              orbitTargetMode={orbitTargetMode}
+              presentSignalRef={presentSignalRef}
+              onPresentDone={() => setOrbitTargetMode("walk")}
+            />
           )}
 
           <aside className="properties">
@@ -588,6 +689,29 @@ function App() {
                     ))}
                   </div>
                 </div>
+
+                {/* Feature 4: relative placement */}
+                <div className="section-divider">相対配置</div>
+                <p className="section-desc">基準：<strong>{selectedItem.name}</strong></p>
+                <label>基準端
+                  <select value={relativeAnchor} onChange={(event) => setRelativeAnchor(event.target.value as RelativeAnchor)}>
+                    {(Object.keys(relativeAnchorLabels) as RelativeAnchor[]).map((key) => (
+                      <option key={key} value={key}>{relativeAnchorLabels[key]}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>距離 m
+                  <input type="number" value={relativeDistance} min={0} step={0.5}
+                    onChange={(event) => setRelativeDistance(Number(event.target.value))} />
+                </label>
+                {pendingRelativeSnap ? (
+                  <div className="snap-pending">
+                    ✓ 次の配置: X={pendingRelativeSnap.x.toFixed(2)}, Y={pendingRelativeSnap.y.toFixed(2)}
+                  </div>
+                ) : null}
+                <button className="primary-button" style={{ marginTop: 4 }} onClick={applyRelativePlacement}>
+                  この距離に次の設備を配置
+                </button>
               </>
             ) : (
               <p>設備をクリックして選択</p>
@@ -642,8 +766,18 @@ function LayoutItemView({ item, selected, area, pxPerMeter, onPointerDown, onDou
   );
 }
 
-function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory: ProjectFile["factory"]; items: LayoutItem[]; selectedId: string | null; orbitTargetMode: OrbitTargetMode }) {
+function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSignalRef, onPresentDone }: {
+  factory: ProjectFile["factory"];
+  items: LayoutItem[];
+  selectedId: string | null;
+  orbitTargetMode: OrbitTargetMode;
+  presentSignalRef?: React.MutableRefObject<(() => void) | null>;
+  onPresentDone?: () => void;
+}) {
   const mountRef = useRef<HTMLDivElement | null>(null);
+  // Keep latest onPresentDone callback accessible from inside the tween closure without re-running the effect
+  const onPresentDoneRef = useRef<(() => void) | undefined>(undefined);
+  onPresentDoneRef.current = onPresentDone;
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -662,6 +796,15 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     mount.appendChild(renderer.domElement);
+
+    // Feature 1: CSS2DRenderer for billboard labels
+    const labelRenderer = new CSS2DRenderer();
+    labelRenderer.setSize(width, height);
+    labelRenderer.domElement.style.position = "absolute";
+    labelRenderer.domElement.style.top = "0";
+    labelRenderer.domElement.style.left = "0";
+    labelRenderer.domElement.style.pointerEvents = "none";
+    mount.appendChild(labelRenderer.domElement);
 
     const controls = orbitTargetMode === "walk" ? null : new OrbitControls(camera, renderer.domElement);
     const walkKeys = new Set<string>();
@@ -715,12 +858,95 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory
       model.rotation.y = THREE.MathUtils.degToRad(item.rotation);
       scene.add(model);
 
+      // Feature 1: billboard label attached to each equipment model
+      const labelDiv = document.createElement("div");
+      labelDiv.textContent = item.name;
+      labelDiv.style.cssText = [
+        "background:rgba(255,255,255,0.88)",
+        "color:#0f172a",
+        "padding:2px 7px",
+        "border-radius:4px",
+        "font-size:11px",
+        "font-weight:700",
+        "white-space:nowrap",
+        "pointer-events:none",
+        "box-shadow:0 1px 3px rgba(0,0,0,0.15)"
+      ].join(";");
+      const labelObj = new CSS2DObject(labelDiv);
+      // Place above the item (Y rotation of group doesn't affect label's Y position in world space)
+      labelObj.position.set(0, Math.max(item.height, 0.05) + 0.3, 0);
+      model.add(labelObj);
+
       if (item.id === selectedId) {
         const outline = createSelectionOutline(item);
         outline.position.copy(model.position);
         outline.rotation.copy(model.rotation);
         scene.add(outline);
       }
+    }
+
+    // Feature 3: 3D factory dimension labels
+    const makeDimLabel = (text: string, x: number, y: number, z: number) => {
+      const div = document.createElement("div");
+      div.textContent = text;
+      div.style.cssText = [
+        "color:#64748b",
+        "font-size:12px",
+        "font-weight:700",
+        "pointer-events:none",
+        "white-space:nowrap"
+      ].join(";");
+      const obj = new CSS2DObject(div);
+      obj.position.set(x, y, z);
+      scene.add(obj);
+    };
+    // Width label at front edge center
+    makeDimLabel(`${factory.width}m`, factory.width / 2, 0.1, factory.depth + 0.9);
+    // Depth label at left edge center
+    makeDimLabel(`${factory.depth}m`, -0.9, 0.1, factory.depth / 2);
+
+    // Resize handler for both renderers (Feature 1 requirement)
+    const resizeObserver = new ResizeObserver(() => {
+      const w = mount.clientWidth || 900;
+      const h = mount.clientHeight || 650;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      labelRenderer.setSize(w, h);
+    });
+    resizeObserver.observe(mount);
+
+    // Feature 2: present mode – tween from orbit camera to walk start position
+    let activeTween: Tween<{ x: number; y: number; z: number }> | null = null;
+    let tweening = false;
+
+    if (presentSignalRef && orbitTargetMode !== "walk") {
+      presentSignalRef.current = () => {
+        if (tweening) return;
+        tweening = true;
+        if (controls) controls.enabled = false;
+
+        const walkEndPos = {
+          x: Math.min(1.5, factory.width * 0.25),
+          y: 1.6,
+          z: Math.min(1.5, factory.depth * 0.25)
+        };
+        const tweenObj = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+
+        activeTween = new Tween(tweenObj)
+          .to(walkEndPos, 2000)
+          .easing(Easing.Quadratic.InOut)
+          .onUpdate((pos) => {
+            camera.position.set(pos.x, pos.y, pos.z);
+            camera.lookAt(factory.width / 2, 1.0, factory.depth / 2);
+          })
+          .onComplete(() => {
+            tweening = false;
+            activeTween = null;
+            onPresentDoneRef.current?.();
+          })
+          .start();
+      };
     }
 
     const keyDown = (event: KeyboardEvent) => {
@@ -777,18 +1003,23 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode }: { factory
     let animation = 0;
     const render = () => {
       animation = requestAnimationFrame(render);
+      tweenUpdate(); // Feature 2: advance tween animations
       if (orbitTargetMode === "walk") {
         updateWalkCamera(camera, walkKeys, walkState.speed, clock.getDelta(), factory);
       } else {
         clock.getDelta();
       }
       renderer.render(scene, camera);
+      labelRenderer.render(scene, camera); // Feature 1: CSS2D billboard rendering
     };
     render();
 
     return () => {
       cancelAnimationFrame(animation);
+      activeTween?.stop();
+      resizeObserver.disconnect();
       controls?.dispose();
+      if (presentSignalRef) presentSignalRef.current = null;
       renderer.domElement.removeEventListener("contextmenu", contextMenu);
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
