@@ -563,7 +563,6 @@ function App() {
                 style={{
                   width: factory.width * pxPerMeter,
                   height: factory.depth * pxPerMeter,
-                  cursor: waypointMode ? "crosshair" : undefined,
                   backgroundImage: `
                     linear-gradient(#94a3b8 1.5px, transparent 1.5px),
                     linear-gradient(90deg, #94a3b8 1.5px, transparent 1.5px),
@@ -578,17 +577,7 @@ function App() {
                   `
                 }}
                 onPointerMove={moveDrag}
-                onPointerUp={(event) => {
-                  if (waypointMode && !drag) {
-                    const rect = boardRef.current?.getBoundingClientRect();
-                    if (rect) {
-                      const x = snap(clamp((event.clientX - rect.left) / pxPerMeter, 0, factory.width), factory.grid);
-                      const y = snap(clamp((event.clientY - rect.top) / pxPerMeter, 0, factory.depth), factory.grid);
-                      setWaypoints((prev) => [...prev, { id: makeId("wp"), x, y }]);
-                    }
-                  }
-                  endDrag(event);
-                }}
+                onPointerUp={endDrag}
               >
                 <div className="dimension dim-width">{factory.width} m</div>
                 <div className="dimension dim-depth">{factory.depth} m</div>
@@ -605,7 +594,20 @@ function App() {
                     ({x},{y})
                   </div>
                 ))}
-                {/* ウェイポイントマーカー */}
+                {/* ルート設定オーバーレイ: アイテム含む全体をカバーしてクリックを横取り */}
+                {waypointMode && (
+                  <div
+                    style={{ position: "absolute", inset: 0, zIndex: 50, cursor: "crosshair" }}
+                    onPointerUp={(event) => {
+                      const rect = boardRef.current?.getBoundingClientRect();
+                      if (!rect) return;
+                      const x = snap(clamp((event.clientX - rect.left) / pxPerMeter, 0, factory.width), factory.grid);
+                      const y = snap(clamp((event.clientY - rect.top) / pxPerMeter, 0, factory.depth), factory.grid);
+                      setWaypoints((prev) => [...prev, { id: makeId("wp"), x, y }]);
+                    }}
+                  />
+                )}
+                {/* ウェイポイントマーカー（オーバーレイより上に表示） */}
                 {waypoints.map((wp, i) => (
                   <div
                     key={wp.id}

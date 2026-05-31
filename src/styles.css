@@ -594,7 +594,7 @@ select {
 /* Waypoint markers */
 .waypoint-marker {
   position: absolute;
-  z-index: 15;
+  z-index: 60; /* above waypoint overlay (50) */
   display: flex;
   align-items: center;
   gap: 3px;
