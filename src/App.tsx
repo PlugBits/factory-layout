@@ -47,6 +47,7 @@ type ProjectFile = {
     walls?: Record<WallSide, boolean>;
   };
   items: LayoutItem[];
+  waypoints?: Waypoint[];
 };
 
 const templates: EquipmentTemplate[] = [
@@ -164,6 +165,7 @@ function App() {
   const [category, setCategory] = useState<Category>("machine");
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0].id);
   const [items, setItems] = useState<LayoutItem[]>(() => draftProject?.items ?? []);
+  const [waypoints, setWaypoints] = useState<Waypoint[]>(() => draftProject?.waypoints ?? []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sizeEditId, setSizeEditId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -176,7 +178,6 @@ function App() {
   // Feature 2: present mode signal ref
   const presentSignalRef = useRef<(() => void) | null>(null);
   // ウェイポイント
-  const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [waypointMode, setWaypointMode] = useState(false);
   const waypointsRef = useRef<Waypoint[]>([]);
   waypointsRef.current = waypoints;
@@ -294,13 +295,13 @@ function App() {
   }, [selectedId]);
 
   useEffect(() => {
-    const project: ProjectFile = { version: 1, factory, items };
+    const project: ProjectFile = { version: 1, factory, items, waypoints };
     try {
       window.localStorage.setItem(draftStorageKey, JSON.stringify(project));
     } catch {
       // Autosave is best-effort; JSON export still works when storage is unavailable.
     }
-  }, [factory, items]);
+  }, [factory, items, waypoints]);
 
   const deleteSelected = () => {
     if (!selectedId) return;
@@ -433,7 +434,7 @@ function App() {
   };
 
   const saveJson = () => {
-    const project: ProjectFile = { version: 1, factory, items };
+    const project: ProjectFile = { version: 1, factory, items, waypoints };
     downloadBlob(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" }), "factory-layout.json");
   };
 
@@ -446,6 +447,7 @@ function App() {
     }
     setFactory(makeFactory(project.factory));
     setItems(project.items);
+    setWaypoints(project.waypoints ?? []);
     setSelectedId(null);
   };
 
