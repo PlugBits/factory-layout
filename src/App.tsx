@@ -1218,7 +1218,7 @@ function addTopIcon(group: THREE.Group, item: LayoutItem, itemNumber: number, wi
     new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
   );
   sprite.scale.set(spriteW, spriteH, 1);
-  sprite.position.set(0, height / 2, 0); // center of item height
+  sprite.position.set(0, height + 0.4, 0); // float above item
   group.add(sprite);
 }
 
