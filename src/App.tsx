@@ -1311,7 +1311,54 @@ function createWindowedWall(width: number, depth: number, height: number) {
   return group;
 }
 
+function createWorkerModel(item: LayoutItem): THREE.Group {
+  const group = new THREE.Group();
+  const base = new THREE.Color(item.color);
+
+  const mat = (scale: number) => new THREE.MeshLambertMaterial({
+    color: base.clone().multiplyScalar(scale),
+    transparent: true,
+    opacity: 0.92
+  });
+
+  // Head – lighter shade
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 7), mat(1.3));
+  head.position.set(0, 1.53, 0);
+  group.add(head);
+
+  // Torso
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.52, 0.17), mat(1.0));
+  torso.position.set(0, 1.08, 0);
+  group.add(torso);
+
+  // Arms – slightly lighter, spread 5° outward
+  const armGeo = new THREE.BoxGeometry(0.09, 0.42, 0.09);
+  [[-0.205, 0.1], [0.205, -0.1]].forEach(([x, rz]) => {
+    const arm = new THREE.Mesh(armGeo, mat(0.88));
+    arm.position.set(x, 1.06, 0);
+    arm.rotation.z = rz;
+    group.add(arm);
+  });
+
+  // Legs – darker shade (pants)
+  const legGeo = new THREE.BoxGeometry(0.13, 0.70, 0.13);
+  [[-0.09], [0.09]].forEach(([x]) => {
+    const leg = new THREE.Mesh(legGeo, mat(0.62));
+    leg.position.set(x, 0.35, 0);
+    group.add(leg);
+  });
+
+  return group;
+}
+
 function createEquipmentModel(item: LayoutItem, itemNumber: number) {
+  // Worker gets a humanoid model instead of a plain box
+  if (item.templateId === "worker") {
+    const group = createWorkerModel(item);
+    addTopIcon(group, item, itemNumber, item.width, item.depth, item.height);
+    return group;
+  }
+
   const group = new THREE.Group();
   const baseColor = new THREE.Color(item.color);
   const w = item.width;
