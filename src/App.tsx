@@ -181,6 +181,13 @@ function App() {
   const [waypointMode, setWaypointMode] = useState(false);
   const waypointsRef = useRef<Waypoint[]>([]);
   waypointsRef.current = waypoints;
+  // プレゼン速度設定
+  const [presentMoveSec, setPresentMoveSec] = useState(4.0);
+  const [presentRotateSec, setPresentRotateSec] = useState(1.5);
+  const presentMoveSecRef = useRef(presentMoveSec);
+  presentMoveSecRef.current = presentMoveSec;
+  const presentRotateSecRef = useRef(presentRotateSec);
+  presentRotateSecRef.current = presentRotateSec;
   // 2点間距離設定
   const [secondSelectedId, setSecondSelectedId] = useState<string | null>(null);
   const [twoPointTargetGap, setTwoPointTargetGap] = useState(0);
@@ -526,16 +533,28 @@ function App() {
               ルート消去 ({waypoints.length})
             </button>
           ) : null}
-          {/* Feature 2: present mode button */}
+          {/* Feature 2: present mode controls */}
           {viewMode === "3d" ? (
-            <button
-              className="view-button"
-              onClick={() => presentSignalRef.current?.()}
-              disabled={orbitTargetMode === "walk"}
-              title={waypoints.length > 0 ? `ウェイポイント${waypoints.length}点を巡回` : "俯瞰から歩行視点へ遷移"}
-            >
-              🎬 プレゼン {waypoints.length > 0 ? `(${waypoints.length}点)` : ""}
-            </button>
+            <span className="present-speed-controls">
+              <label className="speed-label">
+                移動 {presentMoveSec}s
+                <input type="range" min={1} max={8} step={0.5} value={presentMoveSec}
+                  onChange={(e) => setPresentMoveSec(Number(e.target.value))} />
+              </label>
+              <label className="speed-label">
+                回転 {presentRotateSec}s
+                <input type="range" min={0.5} max={4} step={0.5} value={presentRotateSec}
+                  onChange={(e) => setPresentRotateSec(Number(e.target.value))} />
+              </label>
+              <button
+                className="view-button"
+                onClick={() => presentSignalRef.current?.()}
+                disabled={orbitTargetMode === "walk"}
+                title={waypoints.length > 0 ? `ウェイポイント${waypoints.length}点を巡回` : "俯瞰から歩行視点へ遷移"}
+              >
+                🎬 プレゼン {waypoints.length > 0 ? `(${waypoints.length}点)` : ""}
+              </button>
+            </span>
           ) : null}
           <button onClick={rotateSelected} disabled={!selectedItem}><RotateCw size={16} />回転</button>
           <button onClick={deleteSelected} disabled={!selectedItem}>削除</button>
@@ -660,6 +679,8 @@ function App() {
               presentSignalRef={presentSignalRef}
               onPresentDone={() => setOrbitTargetMode("walk")}
               waypointsRef={waypointsRef}
+              presentMoveSecRef={presentMoveSecRef}
+              presentRotateSecRef={presentRotateSecRef}
             />
           )}
 
@@ -838,7 +859,7 @@ function LayoutItemView({ item, selected, secondSelected, area, pxPerMeter, onPo
   );
 }
 
-function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSignalRef, onPresentDone, waypointsRef }: {
+function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSignalRef, onPresentDone, waypointsRef, presentMoveSecRef, presentRotateSecRef }: {
   factory: ProjectFile["factory"];
   items: LayoutItem[];
   selectedId: string | null;
@@ -846,6 +867,8 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
   presentSignalRef?: React.MutableRefObject<(() => void) | null>;
   onPresentDone?: () => void;
   waypointsRef?: React.MutableRefObject<Waypoint[]>;
+  presentMoveSecRef?: React.MutableRefObject<number>;
+  presentRotateSecRef?: React.MutableRefObject<number>;
 }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   // Keep latest onPresentDone callback accessible from inside the tween closure without re-running the effect
@@ -1006,9 +1029,11 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
       const wp = wps[idx];
       const toPos = new THREE.Vector3(wp.x, 1.6, wp.y);
       const fixedQuat = camera.quaternion.clone(); // keep facing while moving
+      const moveDur = (presentMoveSecRef?.current ?? 4.0) * 1000;
+      const rotateDur = (presentRotateSecRef?.current ?? 1.5) * 1000;
 
       // Phase 1: Move to waypoint (orientation locked – already facing destination)
-      startAnim(camera.position.clone(), toPos, fixedQuat, fixedQuat, 2500, () => {
+      startAnim(camera.position.clone(), toPos, fixedQuat, fixedQuat, moveDur, () => {
         if (cancelAnim) { tweening = false; if (controls) controls.enabled = true; return; }
         const nextWp = wps[idx + 1];
         if (nextWp) {
@@ -1016,9 +1041,9 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
           const nextPos = new THREE.Vector3(nextWp.x, 1.6, nextWp.y);
           const fromQ = camera.quaternion.clone();
           const toQ = lookAtQuat(toPos, nextPos);
-          startAnim(toPos, toPos, fromQ, toQ, 800, () => {
+          startAnim(toPos, toPos, fromQ, toQ, rotateDur, () => {
             if (cancelAnim) { tweening = false; if (controls) controls.enabled = true; return; }
-            setTimeout(() => animateToWaypoint(wps, idx + 1), 300);
+            setTimeout(() => animateToWaypoint(wps, idx + 1), 400);
           });
         } else {
           // Last waypoint – done
@@ -1035,12 +1060,14 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
         cancelAnim = false;
         if (controls) controls.enabled = false;
         const wps = waypointsRef?.current ?? [];
+        const moveDur = (presentMoveSecRef?.current ?? 4.0) * 1000;
+        const rotateDur = (presentRotateSecRef?.current ?? 1.5) * 1000;
         if (wps.length > 0) {
           // Step 0: First rotate at current position to face WP[0]
           const firstPos = new THREE.Vector3(wps[0].x, 1.6, wps[0].y);
           const fromQ = camera.quaternion.clone();
           const toQ = lookAtQuat(camera.position, firstPos);
-          startAnim(camera.position.clone(), camera.position.clone(), fromQ, toQ, 800, () => {
+          startAnim(camera.position.clone(), camera.position.clone(), fromQ, toQ, rotateDur, () => {
             if (cancelAnim) { tweening = false; if (controls) controls.enabled = true; return; }
             animateToWaypoint(wps, 0);
           });
@@ -1049,7 +1076,7 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
           const toPos = new THREE.Vector3(Math.min(1.5, factory.width * 0.25), 1.6, Math.min(1.5, factory.depth * 0.25));
           const fromQ = camera.quaternion.clone();
           const toQ = lookAtQuat(camera.position, new THREE.Vector3(factory.width / 2, 1.0, factory.depth / 2));
-          startAnim(camera.position.clone(), toPos, fromQ, toQ, 2000, () => {
+          startAnim(camera.position.clone(), toPos, fromQ, toQ, moveDur, () => {
             tweening = false; camAnim = null;
             onPresentDoneRef.current?.();
           });

@@ -438,6 +438,32 @@ select {
   display: block;
 }
 
+/* Present mode speed controls */
+.present-speed-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.speed-label {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  color: #475569;
+  white-space: nowrap;
+  min-width: 56px;
+}
+
+.speed-label input[type="range"] {
+  width: 72px;
+  min-height: 0;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
 .walk-help {
   position: absolute;
   left: 12px;
