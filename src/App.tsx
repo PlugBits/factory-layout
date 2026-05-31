@@ -4,7 +4,6 @@ import { toPng } from "html-to-image";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
-import { Tween, Easing, update as tweenUpdate } from "@tweenjs/tween.js";
 
 type Category = "machine" | "logistics" | "work" | "building" | "utility" | "safety";
 type ViewMode = "2d" | "3d";
@@ -967,81 +966,59 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
     });
     resizeObserver.observe(mount);
 
-    // Feature 2: present mode – waypoint walkthrough or orbit→walk fallback
-    let activeTween: Tween<{ x: number; y: number; z: number }> | null = null;
+    // Feature 2: present mode – manual RAF-based animation (no external dep)
+    type CamAnim = {
+      fromPos: THREE.Vector3; toPos: THREE.Vector3; lookAt: THREE.Vector3;
+      startTime: number; duration: number; onDone: () => void;
+    };
+    let camAnim: CamAnim | null = null;
     let tweening = false;
-    let cancelWalkthrough = false;
+    let cancelAnim = false;
 
-    const easeInOut = (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-
-    const startOrbitToWalk = () => {
-      const walkEndPos = {
-        x: Math.min(1.5, factory.width * 0.25),
-        y: 1.6,
-        z: Math.min(1.5, factory.depth * 0.25)
-      };
-      const tweenObj = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
-      activeTween = new Tween(tweenObj)
-        .to(walkEndPos, 2000)
-        .easing(Easing.Quadratic.InOut)
-        .onUpdate((pos) => {
-          camera.position.set(pos.x, pos.y, pos.z);
-          camera.lookAt(factory.width / 2, 1.0, factory.depth / 2);
-        })
-        .onComplete(() => {
-          tweening = false;
-          activeTween = null;
-          onPresentDoneRef.current?.();
-        })
-        .start();
+    const startAnim = (toPos: THREE.Vector3, lookAt: THREE.Vector3, duration: number, onDone: () => void) => {
+      camAnim = { fromPos: camera.position.clone(), toPos, lookAt, startTime: performance.now(), duration, onDone };
     };
 
-    const chainWaypoints = (wps: Waypoint[], idx: number) => {
-      if (cancelWalkthrough || idx >= wps.length) {
-        tweening = false;
-        activeTween = null;
+    const animateToWaypoint = (wps: Waypoint[], idx: number) => {
+      if (cancelAnim || idx >= wps.length) {
+        tweening = false; camAnim = null;
         if (controls) controls.enabled = true;
         return;
       }
       const wp = wps[idx];
-      const toPos = { x: wp.x, y: 1.6, z: wp.y };
-      const tweenObj = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+      const toPos = new THREE.Vector3(wp.x, 1.6, wp.y);
       const nextWp = wps[idx + 1];
-      const lookTarget = nextWp
-        ? new THREE.Vector3(nextWp.x, 1.6, nextWp.y)
-        : new THREE.Vector3(
-            wp.x + (wp.x - (idx > 0 ? wps[idx - 1].x : wp.x)),
-            1.6,
-            wp.y + (wp.y - (idx > 0 ? wps[idx - 1].y : wp.y - 1))
-          );
-
-      activeTween = new Tween(tweenObj)
-        .to(toPos, 2500)
-        .easing(Easing.Quadratic.InOut)
-        .onUpdate((pos) => {
-          camera.position.set(pos.x, pos.y, pos.z);
-          camera.lookAt(lookTarget.x, lookTarget.y, lookTarget.z);
-        })
-        .onComplete(() => {
-          activeTween = null;
-          if (cancelWalkthrough) { tweening = false; if (controls) controls.enabled = true; return; }
-          // 1秒停止してから次へ
-          setTimeout(() => chainWaypoints(wps, idx + 1), 1000);
-        })
-        .start();
+      let lookAt: THREE.Vector3;
+      if (nextWp) {
+        lookAt = new THREE.Vector3(nextWp.x, 1.6, nextWp.y);
+      } else if (idx > 0) {
+        const prev = wps[idx - 1];
+        lookAt = new THREE.Vector3(wp.x + (wp.x - prev.x), 1.6, wp.y + (wp.y - prev.y));
+      } else {
+        lookAt = new THREE.Vector3(wp.x, 1.6, wp.y + 2);
+      }
+      startAnim(toPos, lookAt, 2500, () => {
+        if (cancelAnim) { tweening = false; if (controls) controls.enabled = true; return; }
+        setTimeout(() => animateToWaypoint(wps, idx + 1), 800);
+      });
     };
 
     if (presentSignalRef && orbitTargetMode !== "walk") {
       presentSignalRef.current = () => {
         if (tweening) return;
         tweening = true;
-        cancelWalkthrough = false;
+        cancelAnim = false;
         if (controls) controls.enabled = false;
         const wps = waypointsRef?.current ?? [];
         if (wps.length > 0) {
-          chainWaypoints(wps, 0);
+          animateToWaypoint(wps, 0);
         } else {
-          startOrbitToWalk();
+          // fallback: fly to walk start
+          const toPos = new THREE.Vector3(Math.min(1.5, factory.width * 0.25), 1.6, Math.min(1.5, factory.depth * 0.25));
+          startAnim(toPos, new THREE.Vector3(factory.width / 2, 1.0, factory.depth / 2), 2000, () => {
+            tweening = false; camAnim = null;
+            onPresentDoneRef.current?.();
+          });
         }
       };
     }
@@ -1100,7 +1077,14 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
     let animation = 0;
     const render = (timestamp: number) => {
       animation = requestAnimationFrame(render);
-      tweenUpdate(timestamp); // pass RAF timestamp for accurate tween timing
+      // Manual camera animation
+      if (camAnim) {
+        const raw = Math.min((timestamp - camAnim.startTime) / camAnim.duration, 1);
+        const t = easeInOut(raw);
+        camera.position.lerpVectors(camAnim.fromPos, camAnim.toPos, t);
+        camera.lookAt(camAnim.lookAt);
+        if (raw >= 1) { const done = camAnim.onDone; camAnim = null; done(); }
+      }
       if (orbitTargetMode === "walk") {
         updateWalkCamera(camera, walkKeys, walkState.speed, clock.getDelta(), factory);
       } else {
@@ -1113,8 +1097,8 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
 
     return () => {
       cancelAnimationFrame(animation);
-      cancelWalkthrough = true;
-      activeTween?.stop();
+      cancelAnim = true;
+      camAnim = null;
       resizeObserver.disconnect();
       controls?.dispose();
       if (presentSignalRef) presentSignalRef.current = null;
@@ -1156,6 +1140,10 @@ function isAreaItem(item: LayoutItem) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function easeInOut(t: number): number {
+  return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 }
 
 const edgePairLabels: Record<EdgePair, string> = {
