@@ -1211,15 +1211,29 @@ function addFrame(group: THREE.Group, width: number, depth: number, height: numb
 
 function addTopIcon(group: THREE.Group, item: LayoutItem, itemNumber: number, width: number, depth: number, height: number) {
   const texture = createTopIconTexture(item, itemNumber);
-  // Sprite always faces the camera (billboard). Canvas is 512×320, aspect = 1.6
-  const spriteW = Math.min(1.6, Math.max(0.5, Math.min(width, depth) * 0.85));
-  const spriteH = spriteW * (320 / 512);
-  const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
-  );
-  sprite.scale.set(spriteW, spriteH, 1);
-  sprite.position.set(0, height + 0.4, 0); // float above item
-  group.add(sprite);
+
+  if (isAreaItem(item)) {
+    // Area items (passageways, floors): flat icon on the top surface
+    const iconWidth = Math.min(1.9, Math.max(0.62, width * 0.72));
+    const iconDepth = Math.min(0.62, Math.max(0.38, depth * 0.72));
+    const label = new THREE.Mesh(
+      new THREE.PlaneGeometry(iconWidth, iconDepth),
+      new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, depthWrite: false })
+    );
+    label.rotation.x = -Math.PI / 2;
+    label.position.set(0, height + 0.012, 0);
+    group.add(label);
+  } else {
+    // Regular items: billboard Sprite floating above, always faces camera
+    const spriteW = Math.min(1.6, Math.max(0.5, Math.min(width, depth) * 0.85));
+    const spriteH = spriteW * (320 / 512);
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
+    );
+    sprite.scale.set(spriteW, spriteH, 1);
+    sprite.position.set(0, height + 0.4, 0);
+    group.add(sprite);
+  }
 }
 
 function createTopIconTexture(item: LayoutItem, itemNumber: number) {
