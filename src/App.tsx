@@ -966,19 +966,33 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
     });
     resizeObserver.observe(mount);
 
-    // Feature 2: present mode – manual RAF-based animation (no external dep)
+    // Feature 2: present mode – manual RAF-based animation
     type CamAnim = {
-      fromPos: THREE.Vector3; toPos: THREE.Vector3; lookAt: THREE.Vector3;
+      fromPos: THREE.Vector3; toPos: THREE.Vector3;
+      fromQuat: THREE.Quaternion; toQuat: THREE.Quaternion;
       startTime: number; duration: number; onDone: () => void;
     };
     let camAnim: CamAnim | null = null;
     let tweening = false;
     let cancelAnim = false;
 
-    const startAnim = (toPos: THREE.Vector3, lookAt: THREE.Vector3, duration: number, onDone: () => void) => {
-      camAnim = { fromPos: camera.position.clone(), toPos, lookAt, startTime: performance.now(), duration, onDone };
+    // quaternion that makes Object3D at `pos` look toward `target`
+    const lookAtQuat = (pos: THREE.Vector3, target: THREE.Vector3): THREE.Quaternion => {
+      const obj = new THREE.Object3D();
+      obj.position.copy(pos);
+      obj.lookAt(target);
+      return obj.quaternion.clone();
     };
 
+    const startAnim = (
+      fromPos: THREE.Vector3, toPos: THREE.Vector3,
+      fromQuat: THREE.Quaternion, toQuat: THREE.Quaternion,
+      duration: number, onDone: () => void
+    ) => {
+      camAnim = { fromPos, toPos, fromQuat, toQuat, startTime: performance.now(), duration, onDone };
+    };
+
+    // sequence: Move → Rotate → Move → Rotate …
     const animateToWaypoint = (wps: Waypoint[], idx: number) => {
       if (cancelAnim || idx >= wps.length) {
         tweening = false; camAnim = null;
@@ -987,19 +1001,26 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
       }
       const wp = wps[idx];
       const toPos = new THREE.Vector3(wp.x, 1.6, wp.y);
-      const nextWp = wps[idx + 1];
-      let lookAt: THREE.Vector3;
-      if (nextWp) {
-        lookAt = new THREE.Vector3(nextWp.x, 1.6, nextWp.y);
-      } else if (idx > 0) {
-        const prev = wps[idx - 1];
-        lookAt = new THREE.Vector3(wp.x + (wp.x - prev.x), 1.6, wp.y + (wp.y - prev.y));
-      } else {
-        lookAt = new THREE.Vector3(wp.x, 1.6, wp.y + 2);
-      }
-      startAnim(toPos, lookAt, 2500, () => {
+      const fixedQuat = camera.quaternion.clone(); // keep facing while moving
+
+      // Phase 1: Move to waypoint (orientation locked – already facing destination)
+      startAnim(camera.position.clone(), toPos, fixedQuat, fixedQuat, 2500, () => {
         if (cancelAnim) { tweening = false; if (controls) controls.enabled = true; return; }
-        setTimeout(() => animateToWaypoint(wps, idx + 1), 800);
+        const nextWp = wps[idx + 1];
+        if (nextWp) {
+          // Phase 2: Rotate at waypoint to face next destination
+          const nextPos = new THREE.Vector3(nextWp.x, 1.6, nextWp.y);
+          const fromQ = camera.quaternion.clone();
+          const toQ = lookAtQuat(toPos, nextPos);
+          startAnim(toPos, toPos, fromQ, toQ, 800, () => {
+            if (cancelAnim) { tweening = false; if (controls) controls.enabled = true; return; }
+            setTimeout(() => animateToWaypoint(wps, idx + 1), 300);
+          });
+        } else {
+          // Last waypoint – done
+          tweening = false;
+          if (controls) controls.enabled = true;
+        }
       });
     };
 
@@ -1011,11 +1032,20 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
         if (controls) controls.enabled = false;
         const wps = waypointsRef?.current ?? [];
         if (wps.length > 0) {
-          animateToWaypoint(wps, 0);
+          // Step 0: First rotate at current position to face WP[0]
+          const firstPos = new THREE.Vector3(wps[0].x, 1.6, wps[0].y);
+          const fromQ = camera.quaternion.clone();
+          const toQ = lookAtQuat(camera.position, firstPos);
+          startAnim(camera.position.clone(), camera.position.clone(), fromQ, toQ, 800, () => {
+            if (cancelAnim) { tweening = false; if (controls) controls.enabled = true; return; }
+            animateToWaypoint(wps, 0);
+          });
         } else {
-          // fallback: fly to walk start
+          // Fallback: fly to walk start
           const toPos = new THREE.Vector3(Math.min(1.5, factory.width * 0.25), 1.6, Math.min(1.5, factory.depth * 0.25));
-          startAnim(toPos, new THREE.Vector3(factory.width / 2, 1.0, factory.depth / 2), 2000, () => {
+          const fromQ = camera.quaternion.clone();
+          const toQ = lookAtQuat(camera.position, new THREE.Vector3(factory.width / 2, 1.0, factory.depth / 2));
+          startAnim(camera.position.clone(), toPos, fromQ, toQ, 2000, () => {
             tweening = false; camAnim = null;
             onPresentDoneRef.current?.();
           });
@@ -1077,12 +1107,12 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
     let animation = 0;
     const render = (timestamp: number) => {
       animation = requestAnimationFrame(render);
-      // Manual camera animation
+      // Manual camera animation (position lerp + quaternion slerp)
       if (camAnim) {
         const raw = Math.min((timestamp - camAnim.startTime) / camAnim.duration, 1);
         const t = easeInOut(raw);
         camera.position.lerpVectors(camAnim.fromPos, camAnim.toPos, t);
-        camera.lookAt(camAnim.lookAt);
+        camera.quaternion.slerpQuaternions(camAnim.fromQuat, camAnim.toQuat, t);
         if (raw >= 1) { const done = camAnim.onDone; camAnim = null; done(); }
       }
       if (orbitTargetMode === "walk") {
