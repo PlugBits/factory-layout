@@ -4,6 +4,17 @@ import { toPng } from "html-to-image";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
+import {
+  categoryLabels,
+  edgePairLabels,
+  formatText,
+  getItemDisplayName,
+  getTemplateName,
+  languages,
+  t,
+  wallSideLabels,
+  type Language
+} from "./i18n";
 
 type Category = "machine" | "logistics" | "work" | "building" | "utility" | "safety";
 type ViewMode = "2d" | "3d";
@@ -89,15 +100,6 @@ const templates: EquipmentTemplate[] = [
   { id: "duct", name: "排気ダクト", category: "utility", width: 4.0, depth: 0.4, height: 3.0, color: "#38bdf8", icon: "DX" }
 ];
 
-const categoryLabels: Record<Category, string> = {
-  machine: "加工設備",
-  logistics: "搬送・物流",
-  work: "検査・作業",
-  building: "建屋",
-  utility: "ユーティリティ",
-  safety: "安全"
-};
-
 const itemColorPalette = [
   "#2563eb",
   "#0f766e",
@@ -114,15 +116,10 @@ const itemColorPalette = [
 ];
 
 const wallSides: WallSide[] = ["north", "east", "south", "west"];
-const wallSideLabels: Record<WallSide, string> = {
-  north: "上辺",
-  east: "右辺",
-  south: "下辺",
-  west: "左辺"
-};
 const defaultWalls: Record<WallSide, boolean> = { north: false, east: false, south: false, west: false };
 const defaultFactory = { width: 30, depth: 18, grid: 1, majorGrid: 4, walls: defaultWalls };
 const draftStorageKey = "factory-layout-draft";
+const languageStorageKey = "factory-layout-language";
 
 function makeId(prefix: string) {
   return `${prefix}-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`;
@@ -137,6 +134,15 @@ function loadDraftProject() {
     return project;
   } catch {
     return null;
+  }
+}
+
+function loadLanguage(): Language {
+  try {
+    const raw = window.localStorage.getItem(languageStorageKey);
+    return languages.some((language) => language.code === raw) ? raw as Language : "ja";
+  } catch {
+    return "ja";
   }
 }
 
@@ -159,6 +165,7 @@ function downloadBlob(blob: Blob, fileName: string) {
 
 function App() {
   const draftProject = useMemo(() => loadDraftProject(), []);
+  const [language, setLanguage] = useState<Language>(() => loadLanguage());
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [orbitTargetMode, setOrbitTargetMode] = useState<OrbitTargetMode>("factory");
   const [factory, setFactory] = useState(() => makeFactory(draftProject?.factory));
@@ -199,6 +206,14 @@ function App() {
   const secondItem = items.find((item) => item.id === secondSelectedId) ?? null;
   const sizeEditItem = items.find((item) => item.id === sizeEditId) ?? null;
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0];
+  const text = (key: Parameters<typeof t>[1]) => t(language, key);
+  const displayItemName = (item: LayoutItem) => getItemDisplayName(language, item.templateId, item.name);
+  const selectedDisplayName = selectedItem ? displayItemName(selectedItem) : "";
+  const secondDisplayName = secondItem ? displayItemName(secondItem) : "";
+  const localizedItems = useMemo(
+    () => items.map((item) => ({ ...item, name: getItemDisplayName(language, item.templateId, item.name) })),
+    [items, language]
+  );
   const renderItems = useMemo(
     () => [...items].sort((left, right) => Number(isAreaItem(right)) - Number(isAreaItem(left))),
     [items]
@@ -309,6 +324,15 @@ function App() {
       // Autosave is best-effort; JSON export still works when storage is unavailable.
     }
   }, [factory, items, waypoints]);
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+    try {
+      window.localStorage.setItem(languageStorageKey, language);
+    } catch {
+      // Language preference is non-critical.
+    }
+  }, [language]);
 
   const deleteSelected = () => {
     if (!selectedId) return;
@@ -446,10 +470,10 @@ function App() {
   };
 
   const loadJson = async (file: File) => {
-    const text = await file.text();
-    const project = JSON.parse(text) as ProjectFile;
+    const fileText = await file.text();
+    const project = JSON.parse(fileText) as ProjectFile;
     if (!project.factory || !Array.isArray(project.items)) {
-      window.alert("JSON形式が正しくありません。");
+      window.alert(text("invalidJson"));
       return;
     }
     setFactory(makeFactory(project.factory));
@@ -469,34 +493,40 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">Factory Layout</div>
+        <label className="language-select">
+          {text("language")}
+          <select value={language} onChange={(event) => setLanguage(event.target.value as Language)}>
+            {languages.map((entry) => <option key={entry.code} value={entry.code}>{entry.label}</option>)}
+          </select>
+        </label>
         <div className="mode-toggle">
           <button className={viewMode === "2d" ? "active" : ""} onClick={() => setViewMode("2d")}><Grid2X2 size={16} />2D</button>
           <button className={viewMode === "3d" ? "active" : ""} onClick={() => setViewMode("3d")}><Eye size={16} />3D</button>
         </div>
 
         <details className="panel factory-panel">
-          <summary>工場サイズ</summary>
-          <label>幅 m<input type="number" value={factory.width} min={5} step={1} onChange={(event) => setFactory({ ...factory, width: Number(event.target.value) })} /></label>
-          <label>奥行 m<input type="number" value={factory.depth} min={5} step={1} onChange={(event) => setFactory({ ...factory, depth: Number(event.target.value) })} /></label>
-          <label>グリッド m<input type="number" value={factory.grid} min={0.25} step={0.25} onChange={(event) => setFactory({ ...factory, grid: Number(event.target.value) })} /></label>
-          <label>強調グリッド m<input type="number" value={factory.majorGrid} min={1} step={1} onChange={(event) => setFactory({ ...factory, majorGrid: Number(event.target.value) })} /></label>
+          <summary>{text("factorySize")}</summary>
+          <label>{text("width")} m<input type="number" value={factory.width} min={5} step={1} onChange={(event) => setFactory({ ...factory, width: Number(event.target.value) })} /></label>
+          <label>{text("depth")} m<input type="number" value={factory.depth} min={5} step={1} onChange={(event) => setFactory({ ...factory, depth: Number(event.target.value) })} /></label>
+          <label>{text("grid")} m<input type="number" value={factory.grid} min={0.25} step={0.25} onChange={(event) => setFactory({ ...factory, grid: Number(event.target.value) })} /></label>
+          <label>{text("majorGrid")} m<input type="number" value={factory.majorGrid} min={1} step={1} onChange={(event) => setFactory({ ...factory, majorGrid: Number(event.target.value) })} /></label>
         </details>
 
         <section className="panel template-panel">
-          <div className="panel-title">設備テンプレート</div>
+          <div className="panel-title">{text("equipmentTemplates")}</div>
           <select value={category} onChange={(event) => setCategory(event.target.value as Category)}>
-            {(Object.keys(categoryLabels) as Category[]).map((key) => <option key={key} value={key}>{categoryLabels[key]}</option>)}
+            {(Object.keys(categoryLabels.ja) as Category[]).map((key) => <option key={key} value={key}>{categoryLabels[language][key]}</option>)}
           </select>
           <div className="template-list">
             {templates.filter((template) => template.category === category).map((template) => (
               <button key={template.id} className={selectedTemplateId === template.id ? "active" : ""} onClick={() => setSelectedTemplateId(template.id)}>
                 <span style={{ backgroundColor: template.color }}>{template.icon}</span>
-                <strong>{template.name}</strong>
+                <strong>{getTemplateName(language, template.id, template.name)}</strong>
                 <small>{template.width} x {template.depth} x {template.height}m</small>
               </button>
             ))}
           </div>
-          <button className="primary-button" onClick={addSelectedTemplate}><Box size={16} />配置</button>
+          <button className="primary-button" onClick={addSelectedTemplate}><Box size={16} />{text("place")}</button>
         </section>
       </aside>
 
@@ -504,45 +534,45 @@ function App() {
         <header className="topbar">
           {viewMode === "2d" ? (
             <div className="zoom-controls">
-              <button onClick={() => changeZoom(-0.1)} disabled={zoom <= 0.5} aria-label="ズームアウト"><ZoomOut size={16} /></button>
+              <button onClick={() => changeZoom(-0.1)} disabled={zoom <= 0.5} aria-label={text("zoomOut")}><ZoomOut size={16} /></button>
               <button className="zoom-value" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
-              <button onClick={() => changeZoom(0.1)} disabled={zoom >= 2.5} aria-label="ズームイン"><ZoomIn size={16} /></button>
+              <button onClick={() => changeZoom(0.1)} disabled={zoom >= 2.5} aria-label={text("zoomIn")}><ZoomIn size={16} /></button>
             </div>
           ) : null}
           {viewMode === "3d" ? (
             <div className="orbit-toggle">
-              <button className={orbitTargetMode === "factory" ? "active" : ""} onClick={() => setOrbitTargetMode("factory")}>全体中心</button>
-              <button className={orbitTargetMode === "selected" ? "active" : ""} onClick={() => setOrbitTargetMode("selected")} disabled={!selectedItem}>選択中心</button>
+              <button className={orbitTargetMode === "factory" ? "active" : ""} onClick={() => setOrbitTargetMode("factory")}>{text("factoryCenter")}</button>
+              <button className={orbitTargetMode === "selected" ? "active" : ""} onClick={() => setOrbitTargetMode("selected")} disabled={!selectedItem}>{text("selectedCenter")}</button>
             </div>
           ) : null}
           {viewMode === "3d" ? (
-            <button className={orbitTargetMode === "walk" ? "active view-button" : "view-button"} onClick={() => setOrbitTargetMode("walk")}>歩行</button>
+            <button className={orbitTargetMode === "walk" ? "active view-button" : "view-button"} onClick={() => setOrbitTargetMode("walk")}>{text("walk")}</button>
           ) : null}
           {/* ウェイポイントモードトグル（2Dのみ） */}
           {viewMode === "2d" ? (
             <button
               className={waypointMode ? "active view-button" : "view-button"}
               onClick={() => setWaypointMode((v) => !v)}
-              title="クリックでカメラ通過点を追加"
+              title={text("routeSettingTitle")}
             >
-              📍 ルート設定
+              📍 {text("routeSetting")}
             </button>
           ) : null}
           {viewMode === "2d" && waypoints.length > 0 ? (
-            <button onClick={() => setWaypoints([])} title="全ウェイポイント削除">
-              ルート消去 ({waypoints.length})
+            <button onClick={() => setWaypoints([])} title={text("clearRouteTitle")}>
+              {text("clearRoute")} ({waypoints.length})
             </button>
           ) : null}
           {/* Feature 2: present mode controls */}
           {viewMode === "3d" ? (
             <span className="present-speed-controls">
               <label className="speed-label">
-                移動 {presentMoveSec}m/s
+                {text("move")} {presentMoveSec}m/s
                 <input type="range" min={0.5} max={5} step={0.5} value={presentMoveSec}
                   onChange={(e) => setPresentMoveSec(Number(e.target.value))} />
               </label>
               <label className="speed-label">
-                回転 {presentRotateSec}s
+                {text("rotateSpeed")} {presentRotateSec}s
                 <input type="range" min={0.5} max={4} step={0.5} value={presentRotateSec}
                   onChange={(e) => setPresentRotateSec(Number(e.target.value))} />
               </label>
@@ -550,16 +580,16 @@ function App() {
                 className="view-button"
                 onClick={() => presentSignalRef.current?.()}
                 disabled={orbitTargetMode === "walk"}
-                title={waypoints.length > 0 ? `ウェイポイント${waypoints.length}点を巡回` : "俯瞰から歩行視点へ遷移"}
+                title={waypoints.length > 0 ? formatText(text("routePointsTitle"), { count: waypoints.length }) : text("presentTitle")}
               >
-                🎬 プレゼン {waypoints.length > 0 ? `(${waypoints.length}点)` : ""}
+                🎬 {text("present")} {waypoints.length > 0 ? `(${waypoints.length}${text("points")})` : ""}
               </button>
             </span>
           ) : null}
-          <button onClick={rotateSelected} disabled={!selectedItem}><RotateCw size={16} />回転</button>
-          <button onClick={deleteSelected} disabled={!selectedItem}>削除</button>
-          <button onClick={saveJson}><Save size={16} />JSON保存</button>
-          <button onClick={() => fileRef.current?.click()}><Upload size={16} />JSON読込</button>
+          <button onClick={rotateSelected} disabled={!selectedItem}><RotateCw size={16} />{text("rotate")}</button>
+          <button onClick={deleteSelected} disabled={!selectedItem}>{text("delete")}</button>
+          <button onClick={saveJson}><Save size={16} />{text("saveJson")}</button>
+          <button onClick={() => fileRef.current?.click()}><Upload size={16} />{text("loadJson")}</button>
           <button onClick={exportPng}><Download size={16} />PNG</button>
           <input ref={fileRef} hidden type="file" accept="application/json" onChange={(event) => {
             const file = event.target.files?.[0];
@@ -640,7 +670,7 @@ function App() {
                     <button
                       className="waypoint-delete"
                       onClick={() => setWaypoints((prev) => prev.filter((w) => w.id !== wp.id))}
-                      title="削除"
+                      title={text("delete")}
                     >×</button>
                   </div>
                 ))}
@@ -651,9 +681,9 @@ function App() {
                     className={`wall-edge wall-edge-${side} ${factory.walls?.[side] ? "active" : ""}`}
                     onPointerDown={(event) => event.stopPropagation()}
                     onClick={() => toggleWallSide(side)}
-                    title={`${wallSideLabels[side]}の3D壁`}
+                    title={formatText(text("wallTitle"), { side: wallSideLabels[language][side] })}
                   >
-                    {factory.walls?.[side] ? "壁" : ""}
+                    {factory.walls?.[side] ? text("wall") : ""}
                   </button>
                 ))}
                 {renderItems.map((item) => (
@@ -664,6 +694,7 @@ function App() {
                     secondSelected={item.id === secondSelectedId}
                     area={isAreaItem(item)}
                     pxPerMeter={pxPerMeter}
+                    displayName={displayItemName(item)}
                     onPointerDown={(event) => startDrag(event, item)}
                     onDoubleClick={() => setSizeEditId(item.id)}
                   />
@@ -673,7 +704,7 @@ function App() {
           ) : (
             <ThreePreview
               factory={factory}
-              items={items}
+              items={localizedItems}
               selectedId={selectedId}
               orbitTargetMode={orbitTargetMode}
               presentSignalRef={presentSignalRef}
@@ -681,11 +712,12 @@ function App() {
               waypointsRef={waypointsRef}
               presentMoveSecRef={presentMoveSecRef}
               presentRotateSecRef={presentRotateSecRef}
+              walkHelp={text("walkHelp")}
             />
           )}
 
           <aside className="properties">
-            <div className="panel-title">配置済み要素</div>
+            <div className="panel-title">{text("placedItems")}</div>
             <div className="placed-list" ref={placedListRef}>
               {items.length ? items.map((item, index) => (
                 <div
@@ -703,7 +735,7 @@ function App() {
                 >
                   <span className="placed-color" style={{ backgroundColor: item.color }} />
                   <span className="placed-main">
-                    <strong>{item.name}</strong>
+                    <strong>{displayItemName(item)}</strong>
                     <small>X {item.x} / Y {item.y}</small>
                   </span>
                   <span className="placed-actions">
@@ -712,7 +744,7 @@ function App() {
                         event.stopPropagation();
                         duplicateItem(item);
                       }}
-                      aria-label="複製"
+                      aria-label={text("duplicate")}
                     >
                       <Copy size={14} />
                     </button>
@@ -721,30 +753,30 @@ function App() {
                         event.stopPropagation();
                         deleteItem(item.id);
                       }}
-                      aria-label="削除"
+                      aria-label={text("delete")}
                     >
                       <Trash2 size={14} />
                     </button>
                   </span>
                 </div>
               )) : (
-                <p>配置済み要素はありません</p>
+                <p>{text("noPlacedItems")}</p>
               )}
             </div>
 
             {/* 2点選択中：間隔設定のみ表示 */}
             {selectedItem && secondItem ? (
               <>
-                <div className="panel-title">2点間の距離設定</div>
+                <div className="panel-title">{text("distanceSettings")}</div>
                 <div className="two-point-header">
                   <span className="two-point-badge two-point-a">A</span>
-                  <span className="two-point-name">{selectedItem.name}</span>
+                  <span className="two-point-name">{selectedDisplayName}</span>
                 </div>
                 <div className="two-point-header">
                   <span className="two-point-badge two-point-b">B</span>
-                  <span className="two-point-name">{secondItem.name}</span>
+                  <span className="two-point-name">{secondDisplayName}</span>
                 </div>
-                <label>基準点
+                <label>{text("referencePoint")}
                   <select value={edgePair} onChange={(event) => {
                     const pair = event.target.value as EdgePair;
                     setEdgePair(pair);
@@ -752,18 +784,18 @@ function App() {
                     const cur = computeEdgeGap(selectedItem, secondItem, pair);
                     setTwoPointTargetGap(Number(cur.toFixed(3)));
                   }}>
-                    {(Object.keys(edgePairLabels) as EdgePair[]).map((k) => (
-                      <option key={k} value={k}>{edgePairLabels[k]}</option>
+                    {(Object.keys(edgePairLabels.ja) as EdgePair[]).map((k) => (
+                      <option key={k} value={k}>{edgePairLabels[language][k]}</option>
                     ))}
                   </select>
                 </label>
                 {currentGap !== null && (
                   <div className="two-point-gaps">
-                    <span>現在: <strong>{currentGap.toFixed(3)} m</strong></span>
-                    <span className="two-point-hint">(負=重複)</span>
+                    <span>{text("current")}: <strong>{currentGap.toFixed(3)} m</strong></span>
+                    <span className="two-point-hint">{text("overlapNote")}</span>
                   </div>
                 )}
-                <label>目標間隔 m
+                <label>{text("targetGap")} m
                   <input type="number" value={twoPointTargetGap} step={0.01}
                     onChange={(event) => {
                       const gap = Number(event.target.value);
@@ -774,21 +806,21 @@ function App() {
               </>
             ) : (
               <>
-                <div className="panel-title">選択中</div>
+                <div className="panel-title">{text("selected")}</div>
                 {selectedItem ? (
                   <>
-                    <label>名称<input value={selectedItem.name} onChange={(event) => updateItem(selectedItem.id, { name: event.target.value })} /></label>
-                    <label>アイコン<input value={selectedItem.icon} maxLength={6} onChange={(event) => updateItem(selectedItem.id, { icon: event.target.value })} /></label>
+                    <label>{text("name")}<input value={selectedDisplayName} onChange={(event) => updateItem(selectedItem.id, { name: event.target.value })} /></label>
+                    <label>{text("icon")}<input value={selectedItem.icon} maxLength={6} onChange={(event) => updateItem(selectedItem.id, { icon: event.target.value })} /></label>
                     <label>X m<input type="number" value={selectedItem.x} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { x: Number(event.target.value) })} /></label>
                     <label>Y m<input type="number" value={selectedItem.y} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { y: Number(event.target.value) })} /></label>
-                    <label>幅 m<input type="number" value={selectedItem.width} step={0.1} onChange={(event) => updateItem(selectedItem.id, { width: Number(event.target.value) })} /></label>
-                    <label>奥行 m<input type="number" value={selectedItem.depth} step={0.1} onChange={(event) => updateItem(selectedItem.id, { depth: Number(event.target.value) })} /></label>
-                    <label>高さ m<input type="number" value={selectedItem.height} step={0.1} onChange={(event) => updateItem(selectedItem.id, { height: Number(event.target.value) })} /></label>
-                    <label>回転<select value={selectedItem.rotation} onChange={(event) => updateItem(selectedItem.id, { rotation: Number(event.target.value) as LayoutItem["rotation"] })}>
+                    <label>{text("width")} m<input type="number" value={selectedItem.width} step={0.1} onChange={(event) => updateItem(selectedItem.id, { width: Number(event.target.value) })} /></label>
+                    <label>{text("depth")} m<input type="number" value={selectedItem.depth} step={0.1} onChange={(event) => updateItem(selectedItem.id, { depth: Number(event.target.value) })} /></label>
+                    <label>{text("height")} m<input type="number" value={selectedItem.height} step={0.1} onChange={(event) => updateItem(selectedItem.id, { height: Number(event.target.value) })} /></label>
+                    <label>{text("rotate")}<select value={selectedItem.rotation} onChange={(event) => updateItem(selectedItem.id, { rotation: Number(event.target.value) as LayoutItem["rotation"] })}>
                       {[0, 90, 180, 270].map((angle) => <option key={angle} value={angle}>{angle}°</option>)}
                     </select></label>
                     <div className="color-panel">
-                      <div className="field-title">色</div>
+                      <div className="field-title">{text("color")}</div>
                       <div className="color-grid">
                         {itemColorPalette.map((color) => (
                           <button
@@ -796,15 +828,15 @@ function App() {
                             className={selectedItem.color.toLowerCase() === color.toLowerCase() ? "color-swatch active" : "color-swatch"}
                             style={{ backgroundColor: color }}
                             onClick={() => updateItem(selectedItem.id, { color })}
-                            aria-label={`色 ${color}`}
+                            aria-label={`${text("color")} ${color}`}
                           />
                         ))}
                       </div>
                     </div>
-                    <p className="section-desc" style={{ marginTop: 8 }}>Ctrl+クリックで2つ目を選択 → 間隔設定</p>
+                    <p className="section-desc" style={{ marginTop: 8 }}>{text("twoPointHint")}</p>
                   </>
                 ) : (
-                  <p>設備をクリックして選択</p>
+                  <p>{text("selectEquipment")}</p>
                 )}
               </>
             )}
@@ -815,12 +847,12 @@ function App() {
         <div className="modal-backdrop" onMouseDown={() => setSizeEditId(null)}>
           <div className="size-modal" onMouseDown={(event) => event.stopPropagation()}>
             <header>
-              <strong>サイズ変更</strong>
-              <button onClick={() => setSizeEditId(null)}>閉じる</button>
+              <strong>{text("resize")}</strong>
+              <button onClick={() => setSizeEditId(null)}>{text("close")}</button>
             </header>
-            <label>幅 X m<input type="number" value={sizeEditItem.width} min={factory.grid} step={factory.grid} onChange={(event) => updateItem(sizeEditItem.id, { width: snapSize(Number(event.target.value), factory.grid) })} /></label>
-            <label>奥行 Y m<input type="number" value={sizeEditItem.depth} min={factory.grid} step={factory.grid} onChange={(event) => updateItem(sizeEditItem.id, { depth: snapSize(Number(event.target.value), factory.grid) })} /></label>
-            <label>高さ Z m<input type="number" value={sizeEditItem.height} min={0.05} step={factory.grid} onChange={(event) => updateItem(sizeEditItem.id, { height: snapSize(Number(event.target.value), factory.grid) })} /></label>
+            <label>{text("width")} X m<input type="number" value={sizeEditItem.width} min={factory.grid} step={factory.grid} onChange={(event) => updateItem(sizeEditItem.id, { width: snapSize(Number(event.target.value), factory.grid) })} /></label>
+            <label>{text("depth")} Y m<input type="number" value={sizeEditItem.depth} min={factory.grid} step={factory.grid} onChange={(event) => updateItem(sizeEditItem.id, { depth: snapSize(Number(event.target.value), factory.grid) })} /></label>
+            <label>{text("height")} Z m<input type="number" value={sizeEditItem.height} min={0.05} step={factory.grid} onChange={(event) => updateItem(sizeEditItem.id, { height: snapSize(Number(event.target.value), factory.grid) })} /></label>
           </div>
         </div>
       ) : null}
@@ -828,12 +860,13 @@ function App() {
   );
 }
 
-function LayoutItemView({ item, selected, secondSelected, area, pxPerMeter, onPointerDown, onDoubleClick }: {
+function LayoutItemView({ item, selected, secondSelected, area, pxPerMeter, displayName, onPointerDown, onDoubleClick }: {
   item: LayoutItem;
   selected: boolean;
   secondSelected: boolean;
   area: boolean;
   pxPerMeter: number;
+  displayName: string;
   onPointerDown: (event: React.PointerEvent) => void;
   onDoubleClick: () => void;
 }) {
@@ -853,13 +886,13 @@ function LayoutItemView({ item, selected, secondSelected, area, pxPerMeter, onPo
       onDoubleClick={onDoubleClick}
     >
       <div className="item-icon">{item.icon}</div>
-      <div className="item-name">{item.name}</div>
+      <div className="item-name">{displayName}</div>
       <div className="item-size">{item.width} x {item.depth} x {item.height}m</div>
     </div>
   );
 }
 
-function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSignalRef, onPresentDone, waypointsRef, presentMoveSecRef, presentRotateSecRef }: {
+function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSignalRef, onPresentDone, waypointsRef, presentMoveSecRef, presentRotateSecRef, walkHelp }: {
   factory: ProjectFile["factory"];
   items: LayoutItem[];
   selectedId: string | null;
@@ -869,6 +902,7 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
   waypointsRef?: React.MutableRefObject<Waypoint[]>;
   presentMoveSecRef?: React.MutableRefObject<number>;
   presentRotateSecRef?: React.MutableRefObject<number>;
+  walkHelp: string;
 }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   // Keep latest onPresentDone callback accessible from inside the tween closure without re-running the effect
@@ -1195,7 +1229,7 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
     <div className="three-preview-wrap">
       <div className="three-preview" ref={mountRef} />
       {orbitTargetMode === "walk" ? (
-        <div className="walk-help">W/A/S/D 移動 ・ Shift 速歩き ・ マウスドラッグで視点回転</div>
+        <div className="walk-help">{walkHelp}</div>
       ) : null}
     </div>
   );
@@ -1222,15 +1256,6 @@ function clamp(value: number, min: number, max: number) {
 function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 }
-
-const edgePairLabels: Record<EdgePair, string> = {
-  "right-left": "A右端 → B左端",
-  "left-right": "A左端 → B右端",
-  "cx-cx":      "A中心X → B中心X",
-  "bottom-top": "A下端 → B上端",
-  "top-bottom": "A上端 → B下端",
-  "cy-cy":      "A中心Y → B中心Y",
-};
 
 function computeEdgeGap(A: LayoutItem, B: LayoutItem, pair: EdgePair): number {
   switch (pair) {

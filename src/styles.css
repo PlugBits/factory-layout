@@ -64,6 +64,10 @@ button:disabled {
   font-weight: 800;
 }
 
+.language-select {
+  margin-bottom: 12px;
+}
+
 .mode-toggle {
   display: grid;
   grid-template-columns: 1fr 1fr;
