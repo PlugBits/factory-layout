@@ -181,8 +181,8 @@ function App() {
   const [waypointMode, setWaypointMode] = useState(false);
   const waypointsRef = useRef<Waypoint[]>([]);
   waypointsRef.current = waypoints;
-  // プレゼン速度設定
-  const [presentMoveSec, setPresentMoveSec] = useState(4.0);
+  // プレゼン速度設定（移動は s/m 単位、回転は固定秒数）
+  const [presentMoveSec, setPresentMoveSec] = useState(1.0);
   const [presentRotateSec, setPresentRotateSec] = useState(1.5);
   const presentMoveSecRef = useRef(presentMoveSec);
   presentMoveSecRef.current = presentMoveSec;
@@ -537,8 +537,8 @@ function App() {
           {viewMode === "3d" ? (
             <span className="present-speed-controls">
               <label className="speed-label">
-                移動 {presentMoveSec}s
-                <input type="range" min={1} max={8} step={0.5} value={presentMoveSec}
+                移動 {presentMoveSec}s/m
+                <input type="range" min={0.2} max={4} step={0.2} value={presentMoveSec}
                   onChange={(e) => setPresentMoveSec(Number(e.target.value))} />
               </label>
               <label className="speed-label">
@@ -1026,12 +1026,14 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
       if (controls) controls.enabled = true;
     };
 
-    // Move → Rotate → Move → … sequence. moveDur/rotateDur fixed at play-start.
-    const moveToWaypoint = (wps: Waypoint[], idx: number, moveDur: number, rotateDur: number) => {
+    // Move → Rotate → Move → … sequence. moveSecPerM/rotateDur fixed at play-start.
+    const moveToWaypoint = (wps: Waypoint[], idx: number, moveSecPerM: number, rotateDur: number) => {
       if (cancelAnim || idx >= wps.length) { endWalkthrough(); return; }
       const wp = wps[idx];
       const toPos = new THREE.Vector3(wp.x, 1.6, wp.y);
       const frozenQuat = camera.quaternion.clone(); // orientation locked while moving
+      const dist = camera.position.distanceTo(toPos);
+      const moveDur = Math.max(500, dist * moveSecPerM * 1000);
 
       startAnim(camera.position.clone(), toPos, frozenQuat, frozenQuat, moveDur, () => {
         if (cancelAnim) { endWalkthrough(); return; }
@@ -1043,7 +1045,7 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
           const toQ = lookAtQuat(toPos, nextPos);
           startAnim(toPos, toPos, fromQ, toQ, rotateDur, () => {
             if (cancelAnim) { endWalkthrough(); return; }
-            setTimeout(() => moveToWaypoint(wps, idx + 1, moveDur, rotateDur), 400);
+            setTimeout(() => moveToWaypoint(wps, idx + 1, moveSecPerM, rotateDur), 400);
           });
         } else {
           endWalkthrough();
@@ -1059,7 +1061,7 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
         if (controls) controls.enabled = false;
 
         // Capture speed settings once at play-start; stable throughout the run
-        const moveDur = Math.max(500, (presentMoveSecRef?.current ?? 4.0) * 1000);
+        const moveSecPerM = Math.max(0.1, presentMoveSecRef?.current ?? 1.0);
         const rotateDur = Math.max(300, (presentRotateSecRef?.current ?? 1.5) * 1000);
         const wps = waypointsRef?.current ?? [];
 
@@ -1070,14 +1072,16 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
           const toQ = lookAtQuat(camera.position, firstPos);
           startAnim(camera.position.clone(), camera.position.clone(), fromQ, toQ, rotateDur, () => {
             if (cancelAnim) { endWalkthrough(); return; }
-            moveToWaypoint(wps, 0, moveDur, rotateDur);
+            moveToWaypoint(wps, 0, moveSecPerM, rotateDur);
           });
         } else {
-          // Fallback: fly from orbit to walk-start position
+          // Fallback: fly from orbit to walk-start position (distance-proportional)
           const toPos = new THREE.Vector3(Math.min(1.5, factory.width * 0.25), 1.6, Math.min(1.5, factory.depth * 0.25));
           const fromQ = camera.quaternion.clone();
           const toQ = lookAtQuat(camera.position, new THREE.Vector3(factory.width / 2, 1.0, factory.depth / 2));
-          startAnim(camera.position.clone(), toPos, fromQ, toQ, moveDur, () => {
+          const fallbackDist = camera.position.distanceTo(toPos);
+          const fallbackDur = Math.max(500, fallbackDist * moveSecPerM * 1000);
+          startAnim(camera.position.clone(), toPos, fromQ, toQ, fallbackDur, () => {
             tweening = false; camAnim = null;
             onPresentDoneRef.current?.();
           });
