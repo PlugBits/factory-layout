@@ -1257,31 +1257,75 @@ function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 }
 
+function getVisualBounds(item: LayoutItem) {
+  const rotated = item.rotation === 90 || item.rotation === 270;
+  const visualWidth = rotated ? item.depth : item.width;
+  const visualDepth = rotated ? item.width : item.depth;
+  const centerX = item.x + item.width / 2;
+  const centerY = item.y + item.depth / 2;
+
+  return {
+    left: centerX - visualWidth / 2,
+    right: centerX + visualWidth / 2,
+    top: centerY - visualDepth / 2,
+    bottom: centerY + visualDepth / 2,
+    centerX,
+    centerY,
+    visualWidth,
+    visualDepth
+  };
+}
+
+function itemXFromVisualLeft(item: LayoutItem, visualLeft: number) {
+  const bounds = getVisualBounds(item);
+  return visualLeft - item.width / 2 + bounds.visualWidth / 2;
+}
+
+function itemXFromVisualRight(item: LayoutItem, visualRight: number) {
+  const bounds = getVisualBounds(item);
+  return visualRight - item.width / 2 - bounds.visualWidth / 2;
+}
+
+function itemYFromVisualTop(item: LayoutItem, visualTop: number) {
+  const bounds = getVisualBounds(item);
+  return visualTop - item.depth / 2 + bounds.visualDepth / 2;
+}
+
+function itemYFromVisualBottom(item: LayoutItem, visualBottom: number) {
+  const bounds = getVisualBounds(item);
+  return visualBottom - item.depth / 2 - bounds.visualDepth / 2;
+}
+
 function computeEdgeGap(A: LayoutItem, B: LayoutItem, pair: EdgePair): number {
+  const a = getVisualBounds(A);
+  const b = getVisualBounds(B);
   switch (pair) {
-    case "right-left": return B.x - (A.x + A.width);
-    case "left-right": return A.x - (B.x + B.width);
-    case "cx-cx":      return (B.x + B.width / 2) - (A.x + A.width / 2);
-    case "bottom-top": return B.y - (A.y + A.depth);
-    case "top-bottom": return A.y - (B.y + B.depth);
-    case "cy-cy":      return (B.y + B.depth / 2) - (A.y + A.depth / 2);
+    case "right-left": return b.left - a.right;
+    case "left-right": return a.left - b.right;
+    case "cx-cx":      return b.centerX - a.centerX;
+    case "bottom-top": return b.top - a.bottom;
+    case "top-bottom": return a.top - b.bottom;
+    case "cy-cy":      return b.centerY - a.centerY;
   }
 }
 
 function getEdgePatch(A: LayoutItem, B: LayoutItem, pair: EdgePair, gap: number): Partial<LayoutItem> {
+  const a = getVisualBounds(A);
   switch (pair) {
-    case "right-left": return { x: A.x + A.width + gap };
-    case "left-right": return { x: A.x - B.width - gap };
-    case "cx-cx":      return { x: A.x + A.width / 2 + gap - B.width / 2 };
-    case "bottom-top": return { y: A.y + A.depth + gap };
-    case "top-bottom": return { y: A.y - B.depth - gap };
-    case "cy-cy":      return { y: A.y + A.depth / 2 + gap - B.depth / 2 };
+    case "right-left": return { x: itemXFromVisualLeft(B, a.right + gap) };
+    case "left-right": return { x: itemXFromVisualRight(B, a.left - gap) };
+    case "cx-cx":      return { x: a.centerX + gap - B.width / 2 };
+    case "bottom-top": return { y: itemYFromVisualTop(B, a.bottom + gap) };
+    case "top-bottom": return { y: itemYFromVisualBottom(B, a.top - gap) };
+    case "cy-cy":      return { y: a.centerY + gap - B.depth / 2 };
   }
 }
 
 function autoDetectEdgePair(A: LayoutItem, B: LayoutItem): EdgePair {
-  const dx = (B.x + B.width / 2) - (A.x + A.width / 2);
-  const dy = (B.y + B.depth / 2) - (A.y + A.depth / 2);
+  const a = getVisualBounds(A);
+  const b = getVisualBounds(B);
+  const dx = b.centerX - a.centerX;
+  const dy = b.centerY - a.centerY;
   if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? "right-left" : "left-right";
   return dy >= 0 ? "bottom-top" : "top-bottom";
 }
