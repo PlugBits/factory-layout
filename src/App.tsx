@@ -1067,13 +1067,25 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
         const wps = waypointsRef?.current ?? [];
 
         if (wps.length > 0) {
-          // Step 0: fly from current (orbit) position to WP[0] — fixed 2s
+          // Step 0: fly from orbit to WP[0] — fixed 2s
           const firstPos = new THREE.Vector3(wps[0].x, 1.6, wps[0].y);
           const fromQ = camera.quaternion.clone();
           const toQ = lookAtQuat(camera.position, firstPos);
           startAnim(camera.position.clone(), firstPos, fromQ, toQ, 2000, () => {
             if (cancelAnim) { endWalkthrough(); return; }
-            moveToWaypoint(wps, 1, moveSecPerM, rotateDur);
+            // Arrived at WP[0]: rotate to face WP[1] then walk the rest
+            const nextWp = wps[1];
+            if (nextWp) {
+              const nextPos = new THREE.Vector3(nextWp.x, 1.6, nextWp.y);
+              const rFromQ = camera.quaternion.clone();
+              const rToQ = lookAtQuat(firstPos, nextPos);
+              startAnim(firstPos, firstPos, rFromQ, rToQ, rotateDur, () => {
+                if (cancelAnim) { endWalkthrough(); return; }
+                setTimeout(() => moveToWaypoint(wps, 1, moveSecPerM, rotateDur), 400);
+              });
+            } else {
+              endWalkthrough();
+            }
           });
         } else {
           // Fallback: fly from orbit to first walk position — fixed 2s
