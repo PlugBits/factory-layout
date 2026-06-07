@@ -139,6 +139,8 @@ function loadDraftProject() {
 
 function loadLanguage(): Language {
   try {
+    const urlLang = new URLSearchParams(window.location.search).get("lang");
+    if (urlLang && languages.some((l) => l.code === urlLang)) return urlLang as Language;
     const raw = window.localStorage.getItem(languageStorageKey);
     return languages.some((language) => language.code === raw) ? raw as Language : "ja";
   } catch {
