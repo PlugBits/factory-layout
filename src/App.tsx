@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Box, Copy, Download, Eye, Grid2X2, RotateCw, Save, Trash2, Upload, ZoomIn, ZoomOut } from "lucide-react";
+import { Box, Copy, Download, Eye, Grid2X2, Redo2, RotateCw, Save, Trash2, Undo2, Upload, ZoomIn, ZoomOut } from "lucide-react";
 import { toPng } from "html-to-image";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -61,6 +61,8 @@ type ProjectFile = {
   waypoints?: Waypoint[];
 };
 
+type ProjectSnapshot = Pick<ProjectFile, "factory" | "items" | "waypoints">;
+
 const templates: EquipmentTemplate[] = [
   { id: "machining", name: "マシニングセンタ", category: "machine", width: 2.6, depth: 2.2, height: 2.5, color: "#4f83cc", icon: "MC" },
   { id: "nc-lathe", name: "NC旋盤", category: "machine", width: 2.8, depth: 1.8, height: 2.0, color: "#5b8def", icon: "NC" },
@@ -120,6 +122,7 @@ const defaultWalls: Record<WallSide, boolean> = { north: false, east: false, sou
 const defaultFactory = { width: 30, depth: 18, grid: 1, majorGrid: 4, walls: defaultWalls };
 const draftStorageKey = "factory-layout-draft";
 const languageStorageKey = "factory-layout-language";
+const historyLimit = 100;
 
 function makeId(prefix: string) {
   return `${prefix}-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`;
@@ -175,6 +178,8 @@ function App() {
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0].id);
   const [items, setItems] = useState<LayoutItem[]>(() => draftProject?.items ?? []);
   const [waypoints, setWaypoints] = useState<Waypoint[]>(() => draftProject?.waypoints ?? []);
+  const [undoStack, setUndoStack] = useState<ProjectSnapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<ProjectSnapshot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sizeEditId, setSizeEditId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -201,6 +206,7 @@ function App() {
   const [secondSelectedId, setSecondSelectedId] = useState<string | null>(null);
   const [twoPointTargetGap, setTwoPointTargetGap] = useState(0);
   const [edgePair, setEdgePair] = useState<EdgePair>("right-left");
+  const dragStartSnapshotRef = useRef<ProjectSnapshot | null>(null);
 
   const basePxPerMeter = useMemo(() => Math.max(22, Math.min(52, 960 / factory.width)), [factory.width]);
   const pxPerMeter = basePxPerMeter * zoom;
@@ -220,6 +226,56 @@ function App() {
     () => [...items].sort((left, right) => Number(isAreaItem(right)) - Number(isAreaItem(left))),
     [items]
   );
+
+  const makeProjectSnapshot = (): ProjectSnapshot => ({
+    factory: makeFactory(factory),
+    items: items.map((item) => ({ ...item })),
+    waypoints: waypoints.map((waypoint) => ({ ...waypoint }))
+  });
+
+  const applyProjectSnapshot = (snapshot: ProjectSnapshot) => {
+    setFactory(makeFactory(snapshot.factory));
+    setItems(snapshot.items.map((item) => ({ ...item })));
+    setWaypoints((snapshot.waypoints ?? []).map((waypoint) => ({ ...waypoint })));
+    setSelectedId(null);
+    setSecondSelectedId(null);
+    setSizeEditId(null);
+    setDrag(null);
+  };
+
+  const recordHistory = (snapshot = makeProjectSnapshot()) => {
+    setUndoStack((current) => {
+      if (current.length && snapshotsEqual(current[current.length - 1], snapshot)) return current;
+      return [...current.slice(Math.max(0, current.length - historyLimit + 1)), snapshot];
+    });
+    setRedoStack([]);
+  };
+
+  const undo = () => {
+    if (!undoStack.length) return;
+    const previous = undoStack[undoStack.length - 1];
+    setUndoStack((current) => current.slice(0, -1));
+    setRedoStack((current) => [...current, makeProjectSnapshot()]);
+    applyProjectSnapshot(previous);
+  };
+
+  const redo = () => {
+    if (!redoStack.length) return;
+    const next = redoStack[redoStack.length - 1];
+    setRedoStack((current) => current.slice(0, -1));
+    setUndoStack((current) => [...current.slice(Math.max(0, current.length - historyLimit + 1)), makeProjectSnapshot()]);
+    applyProjectSnapshot(next);
+  };
+
+  const updateFactory = (patch: Partial<ProjectFile["factory"]>) => {
+    recordHistory();
+    setFactory((current) => makeFactory({ ...current, ...patch }));
+  };
+
+  const updateWaypoints = (updater: (current: Waypoint[]) => Waypoint[]) => {
+    recordHistory();
+    setWaypoints((current) => updater(current));
+  };
 
   // 選択中のedgePairで計算した現在の実際の間隔（リアルタイム更新）
   const currentGap = useMemo(() => {
@@ -242,6 +298,7 @@ function App() {
   const addSelectedTemplate = () => {
     const template = selectedTemplate;
     const id = makeId("item");
+    recordHistory();
     setItems((current) => [
       ...current,
       {
@@ -261,14 +318,15 @@ function App() {
     setSelectedId(id);
   };
 
-  const updateItem = (id: string, patch: Partial<LayoutItem>) => {
+  const updateItem = (id: string, patch: Partial<LayoutItem>, record = true) => {
+    if (record) recordHistory();
     setItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
   };
 
-  const moveItemTo = (item: LayoutItem, rawX: number, rawY: number) => {
+  const moveItemTo = (item: LayoutItem, rawX: number, rawY: number, record = true) => {
     const x = snap(Math.max(0, Math.min(factory.width - item.width, rawX)), factory.grid);
     const y = snap(Math.max(0, Math.min(factory.depth - item.depth, rawY)), factory.grid);
-    updateItem(item.id, { x, y });
+    updateItem(item.id, { x, y }, record);
   };
 
   // Bを移動して指定edgePairの間隔をgapに合わせる（負値=重複を許容、境界clampなし）
@@ -296,6 +354,23 @@ function App() {
     window.addEventListener("keydown", keyDown);
     return () => window.removeEventListener("keydown", keyDown);
   }, [drag, factory, items, selectedId, viewMode]);
+
+  useEffect(() => {
+    const keyDown = (event: KeyboardEvent) => {
+      if (isFormField(event.target) || (!event.ctrlKey && !event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+      } else if (key === "y" || (key === "z" && event.shiftKey)) {
+        event.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener("keydown", keyDown);
+    return () => window.removeEventListener("keydown", keyDown);
+  }, [redoStack, undoStack, factory, items, waypoints]);
 
   useEffect(() => {
     setSecondSelectedId(null);
@@ -338,11 +413,13 @@ function App() {
 
   const deleteSelected = () => {
     if (!selectedId) return;
+    recordHistory();
     setItems((current) => current.filter((item) => item.id !== selectedId));
     setSelectedId(null);
   };
 
   const deleteItem = (id: string) => {
+    recordHistory();
     setItems((current) => current.filter((item) => item.id !== id));
     if (selectedId === id) setSelectedId(null);
     if (sizeEditId === id) setSizeEditId(null);
@@ -356,6 +433,7 @@ function App() {
       x: snap(clamp(source.x + (factory.grid || 1), 0, Math.max(0, factory.width - source.width)), factory.grid),
       y: snap(clamp(source.y + (factory.grid || 1), 0, Math.max(0, factory.depth - source.depth)), factory.grid)
     };
+    recordHistory();
     setItems((current) => [...current, copy]);
     setSelectedId(id);
   };
@@ -408,6 +486,7 @@ function App() {
     const rect = boardRef.current?.getBoundingClientRect();
     if (!rect) return;
     setSelectedId(item.id);
+    dragStartSnapshotRef.current = makeProjectSnapshot();
     event.currentTarget.setPointerCapture(event.pointerId);
     setDrag({
       id: item.id,
@@ -423,15 +502,21 @@ function App() {
     if (!item) return;
     const rawX = (event.clientX - rect.left) / pxPerMeter - drag.dx;
     const rawY = (event.clientY - rect.top) / pxPerMeter - drag.dy;
-    moveItemTo(item, rawX, rawY);
+    moveItemTo(item, rawX, rawY, false);
   };
 
   const endDrag = (event: React.PointerEvent) => {
     if (drag) event.currentTarget.releasePointerCapture(event.pointerId);
+    const beforeDrag = dragStartSnapshotRef.current;
+    if (beforeDrag && !snapshotsEqual(beforeDrag, makeProjectSnapshot())) {
+      recordHistory(beforeDrag);
+    }
+    dragStartSnapshotRef.current = null;
     setDrag(null);
   };
 
   const toggleWallSide = (side: WallSide) => {
+    recordHistory();
     setFactory((current) => ({
       ...current,
       walls: {
@@ -478,6 +563,7 @@ function App() {
       window.alert(text("invalidJson"));
       return;
     }
+    recordHistory();
     setFactory(makeFactory(project.factory));
     setItems(project.items);
     setWaypoints(project.waypoints ?? []);
@@ -508,10 +594,10 @@ function App() {
 
         <details className="panel factory-panel">
           <summary>{text("factorySize")}</summary>
-          <label>{text("width")} m<input type="number" value={factory.width} min={5} step={1} onChange={(event) => setFactory({ ...factory, width: Number(event.target.value) })} /></label>
-          <label>{text("depth")} m<input type="number" value={factory.depth} min={5} step={1} onChange={(event) => setFactory({ ...factory, depth: Number(event.target.value) })} /></label>
-          <label>{text("grid")} m<input type="number" value={factory.grid} min={0.25} step={0.25} onChange={(event) => setFactory({ ...factory, grid: Number(event.target.value) })} /></label>
-          <label>{text("majorGrid")} m<input type="number" value={factory.majorGrid} min={1} step={1} onChange={(event) => setFactory({ ...factory, majorGrid: Number(event.target.value) })} /></label>
+          <label>{text("width")} m<input type="number" value={factory.width} min={5} step={1} onChange={(event) => updateFactory({ width: Number(event.target.value) })} /></label>
+          <label>{text("depth")} m<input type="number" value={factory.depth} min={5} step={1} onChange={(event) => updateFactory({ depth: Number(event.target.value) })} /></label>
+          <label>{text("grid")} m<input type="number" value={factory.grid} min={0.25} step={0.25} onChange={(event) => updateFactory({ grid: Number(event.target.value) })} /></label>
+          <label>{text("majorGrid")} m<input type="number" value={factory.majorGrid} min={1} step={1} onChange={(event) => updateFactory({ majorGrid: Number(event.target.value) })} /></label>
         </details>
 
         <section className="panel template-panel">
@@ -561,7 +647,7 @@ function App() {
             </button>
           ) : null}
           {viewMode === "2d" && waypoints.length > 0 ? (
-            <button onClick={() => setWaypoints([])} title={text("clearRouteTitle")}>
+            <button onClick={() => updateWaypoints(() => [])} title={text("clearRouteTitle")}>
               {text("clearRoute")} ({waypoints.length})
             </button>
           ) : null}
@@ -588,6 +674,8 @@ function App() {
               </button>
             </span>
           ) : null}
+          <button onClick={undo} disabled={!undoStack.length} aria-label="Undo"><Undo2 size={16} />Undo</button>
+          <button onClick={redo} disabled={!redoStack.length} aria-label="Redo"><Redo2 size={16} />Redo</button>
           <button onClick={rotateSelected} disabled={!selectedItem}><RotateCw size={16} />{text("rotate")}</button>
           <button onClick={deleteSelected} disabled={!selectedItem}>{text("delete")}</button>
           <button onClick={saveJson}><Save size={16} />{text("saveJson")}</button>
@@ -656,7 +744,7 @@ function App() {
                       if (!rect) return;
                       const x = snap(clamp((event.clientX - rect.left) / pxPerMeter, 0, factory.width), factory.grid);
                       const y = snap(clamp((event.clientY - rect.top) / pxPerMeter, 0, factory.depth), factory.grid);
-                      setWaypoints((prev) => [...prev, { id: makeId("wp"), x, y }]);
+                      updateWaypoints((prev) => [...prev, { id: makeId("wp"), x, y }]);
                     }}
                   />
                 )}
@@ -671,7 +759,7 @@ function App() {
                     W{i + 1}
                     <button
                       className="waypoint-delete"
-                      onClick={() => setWaypoints((prev) => prev.filter((w) => w.id !== wp.id))}
+                      onClick={() => updateWaypoints((prev) => prev.filter((w) => w.id !== wp.id))}
                       title={text("delete")}
                     >×</button>
                   </div>
@@ -1240,6 +1328,10 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
 function snap(value: number, grid: number) {
   if (!grid) return value;
   return Number((Math.round(value / grid) * grid).toFixed(3));
+}
+
+function snapshotsEqual(left: ProjectSnapshot, right: ProjectSnapshot) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function snapSize(value: number, grid: number) {
