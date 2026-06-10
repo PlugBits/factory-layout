@@ -1870,11 +1870,17 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
   const baseColor = new THREE.Color(annotation.color);
   const fillColor = baseColor.clone().lerp(new THREE.Color("#ffffff"), 0.34);
   const edgeColor = baseColor.clone().multiplyScalar(0.62);
-  const material = new THREE.MeshBasicMaterial({
+  const fillMaterial = new THREE.MeshBasicMaterial({
     color: fillColor,
     transparent: true,
     opacity: getFloorSignOpacity(annotation),
     side: THREE.DoubleSide,
+    depthWrite: false
+  });
+  const outlineMaterial = new THREE.LineBasicMaterial({
+    color: edgeColor,
+    transparent: true,
+    opacity: 0.82,
     depthWrite: false
   });
   const points = getAnnotationArrowPoints(annotation);
@@ -1894,25 +1900,16 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
     if (length < 0.05) continue;
 
     if (isLast) {
-      const trim = Math.min(headLength * 0.72, length * 0.55);
-      const shaftEnd = {
-        x: end.x - (dx / length) * trim,
-        y: end.y - (dz / length) * trim
-      };
-      group.add(createFloorSignArrowHead(start, end, headLength, headWidth, y + 0.003, material));
+      group.add(createFloorSignArrowHead(start, end, headLength, headWidth, y + 0.003, fillMaterial, outlineMaterial));
     }
   }
 
   if (annotation.showMarkers !== false && style !== "dashed") {
-    const markerMaterial = new THREE.MeshBasicMaterial({
-      color: baseColor.clone().multiplyScalar(0.82),
-      transparent: true,
-      opacity: annotation.flowType === "forklift" ? 0.58 : 0.5,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    });
-    for (const marker of getAnnotationArrowMarkerPolygons(annotation, style === "markers" ? 3.2 : 4.2, shaftWidth * 1.35, shaftWidth * 1.08)) {
-      group.add(createFloorSignPolygon(marker, y + 0.006, markerMaterial));
+    for (const marker of getAnnotationArrowMarkerPolygons(annotation, style === "markers" ? 1.8 : 2.45, shaftWidth * 1.28, shaftWidth * 1.02)) {
+      group.add(createFloorSignMark(marker, y + 0.006, fillMaterial, outlineMaterial));
+    }
+    for (const marker of getAnnotationCornerMarkerPolygons(annotation, shaftWidth * 1.36, shaftWidth * 1.1)) {
+      group.add(createFloorSignMark(marker, y + 0.009, fillMaterial, outlineMaterial));
     }
   }
 
@@ -1925,12 +1922,12 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
 
 function getFloorSignOpacity(annotation: AnnotationItem) {
   const style = annotation.flowStyle ?? "band";
-  if (style === "markers") return 0.42;
-  if ((annotation.flowType ?? "material") === "forklift") return 0.56;
-  return 0.48;
+  if (style === "markers") return 0.26;
+  if ((annotation.flowType ?? "material") === "forklift") return 0.34;
+  return 0.3;
 }
 
-function createFloorSignArrowHead(start: { x: number; y: number }, end: { x: number; y: number }, length: number, width: number, y: number, material: THREE.Material) {
+function createFloorSignArrowHead(start: { x: number; y: number }, end: { x: number; y: number }, length: number, width: number, y: number, fillMaterial: THREE.Material, outlineMaterial: THREE.Material) {
   const dx = end.x - start.x;
   const dz = end.y - start.y;
   const segmentLength = Math.hypot(dx, dz) || 1;
@@ -1945,7 +1942,7 @@ function createFloorSignArrowHead(start: { x: number; y: number }, end: { x: num
     { x: base.x + px * width / 2, y: base.y + pz * width / 2 },
     { x: base.x - px * width / 2, y: base.y - pz * width / 2 }
   ];
-  return createFloorSignPolygon(polygon, y, material);
+  return createFloorSignMark(polygon, y, fillMaterial, outlineMaterial);
 }
 
 function createFloorSignPolygon(points: Array<{ x: number; y: number }>, y: number, material: THREE.Material) {
@@ -1960,6 +1957,19 @@ function createFloorSignPolygon(points: Array<{ x: number; y: number }>, y: numb
   mesh.position.y = y;
   mesh.renderOrder = 0.5;
   return mesh;
+}
+
+function createFloorSignMark(points: Array<{ x: number; y: number }>, y: number, fillMaterial: THREE.Material, outlineMaterial: THREE.Material) {
+  const group = new THREE.Group();
+  group.add(createFloorSignPolygon(points, y, fillMaterial));
+  const outlinePoints = [...points, points[0]].map((point) => new THREE.Vector3(point.x, y + 0.004, point.y));
+  const outline = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(outlinePoints),
+    outlineMaterial
+  );
+  outline.renderOrder = 0.7;
+  group.add(outline);
+  return group;
 }
 
 function addFloorLabels(group: THREE.Group, annotation: AnnotationItem, y: number, color: THREE.Color) {
@@ -2053,7 +2063,7 @@ function getAnnotationArrowMarkerPolygons(annotation: AnnotationItem, spacing: n
     const uz = dz / segmentLength;
     const px = -uz;
     const pz = ux;
-    const count = Math.max(1, Math.min(5, Math.floor(segmentLength / spacing)));
+    const count = Math.max(1, Math.min(8, Math.floor(segmentLength / spacing)));
     for (let step = 1; step <= count; step += 1) {
       const t = step / (count + 1);
       const cx = start.x + dx * t;
@@ -2067,6 +2077,37 @@ function getAnnotationArrowMarkerPolygons(annotation: AnnotationItem, spacing: n
       ]);
     }
   }
+  return markers;
+}
+
+function getAnnotationCornerMarkerPolygons(annotation: AnnotationItem, length: number, width: number) {
+  const points = getAnnotationArrowPoints(annotation);
+  const markers: Array<Array<{ x: number; y: number }>> = [];
+  if (points.length < 3) return markers;
+
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const bend = points[index];
+    const next = points[index + 1];
+    const dx = next.x - bend.x;
+    const dz = next.y - bend.y;
+    const segmentLength = Math.hypot(dx, dz);
+    if (segmentLength < 0.5) continue;
+
+    const ux = dx / segmentLength;
+    const uz = dz / segmentLength;
+    const px = -uz;
+    const pz = ux;
+    const cx = bend.x + ux * Math.min(0.75, segmentLength * 0.42);
+    const cy = bend.y + uz * Math.min(0.75, segmentLength * 0.42);
+    const tip = { x: cx + ux * length * 0.52, y: cy + uz * length * 0.52 };
+    const base = { x: cx - ux * length * 0.48, y: cy - uz * length * 0.48 };
+    markers.push([
+      tip,
+      { x: base.x + px * width / 2, y: base.y + pz * width / 2 },
+      { x: base.x - px * width / 2, y: base.y - pz * width / 2 }
+    ]);
+  }
+
   return markers;
 }
 
