@@ -281,6 +281,7 @@ function App() {
         id,
         kind: "note",
         label: "Note",
+        body: "",
         x1: x,
         y1: y,
         x2: x,
@@ -1194,12 +1195,10 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
     grid.position.set(factory.width / 2, 0.01, factory.depth / 2);
     scene.add(grid);
 
-    const annotationOccluders: THREE.Object3D[] = [];
-    const annotationLabels: CSS2DObject[] = [];
+    const annotationNoteSprites: THREE.Sprite[] = [];
 
     for (const wall of createFactoryWalls(factory)) {
       scene.add(wall);
-      annotationOccluders.push(wall);
     }
 
     for (const [index, item] of items.entries()) {
@@ -1207,7 +1206,6 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
       model.position.set(item.x + item.width / 2, 0, item.y + item.depth / 2);
       model.rotation.y = THREE.MathUtils.degToRad(item.rotation);
       scene.add(model);
-      annotationOccluders.push(model);
 
       if (item.id === selectedId) {
         const outline = createSelectionOutline(item);
@@ -1223,12 +1221,17 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
           scene.add(createAnnotationArrowModel(annotation));
         } else {
           const note = createAnnotationNoteLabel(annotation);
-          note.position.set(annotation.x1, 0.3, annotation.y1);
+          note.position.set(annotation.x1, 0.7, annotation.y1);
           scene.add(note);
-          annotationLabels.push(note);
+          annotationNoteSprites.push(note);
         }
       }
     }
+
+    const noteTooltip = document.createElement("div");
+    noteTooltip.className = "three-note-tooltip";
+    noteTooltip.style.display = "none";
+    mount.appendChild(noteTooltip);
 
     // Feature 3: 3D factory dimension labels
     const makeDimLabel = (text: string, x: number, y: number, z: number) => {
@@ -1418,7 +1421,33 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
       renderer.domElement.addEventListener("pointercancel", pointerUp);
     }
 
-    const labelOcclusionRaycaster = new THREE.Raycaster();
+    const noteHoverRaycaster = new THREE.Raycaster();
+    const noteHoverPointer = new THREE.Vector2();
+    const updateNoteHover = (event: PointerEvent) => {
+      if (!annotationNoteSprites.length) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      noteHoverPointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      noteHoverPointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      noteHoverRaycaster.camera = camera;
+      noteHoverRaycaster.setFromCamera(noteHoverPointer, camera);
+      const hit = noteHoverRaycaster.intersectObjects(annotationNoteSprites, false)[0]?.object as THREE.Sprite | undefined;
+      const body = hit?.userData.body as string | undefined;
+      if (!body?.trim()) {
+        noteTooltip.style.display = "none";
+        return;
+      }
+      const mountRect = mount.getBoundingClientRect();
+      noteTooltip.textContent = body;
+      noteTooltip.style.left = `${event.clientX - mountRect.left + 12}px`;
+      noteTooltip.style.top = `${event.clientY - mountRect.top + 12}px`;
+      noteTooltip.style.display = "block";
+    };
+    const hideNoteTooltip = () => {
+      noteTooltip.style.display = "none";
+    };
+    renderer.domElement.addEventListener("pointermove", updateNoteHover);
+    renderer.domElement.addEventListener("pointerleave", hideNoteTooltip);
+
     const clock = new THREE.Clock();
     let animation = 0;
     const render = (timestamp: number) => {
@@ -1436,7 +1465,6 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
       } else {
         clock.getDelta();
       }
-      updateAnnotationLabelOcclusion(camera, labelOcclusionRaycaster, annotationOccluders, annotationLabels);
       renderer.render(scene, camera);
       labelRenderer.render(scene, camera);
     };
@@ -1450,6 +1478,9 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
       controls?.dispose();
       if (presentSignalRef) presentSignalRef.current = null;
       renderer.domElement.removeEventListener("contextmenu", contextMenu);
+      renderer.domElement.removeEventListener("pointermove", updateNoteHover);
+      renderer.domElement.removeEventListener("pointerleave", hideNoteTooltip);
+      noteTooltip.remove();
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
       renderer.domElement.removeEventListener("pointerdown", pointerDown);
@@ -1821,47 +1852,6 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
   return group;
 }
 
-function updateAnnotationLabelOcclusion(camera: THREE.Camera, raycaster: THREE.Raycaster, occluders: THREE.Object3D[], labels: CSS2DObject[]) {
-  if (!labels.length || !occluders.length) return;
-  const cameraPosition = new THREE.Vector3();
-  camera.getWorldPosition(cameraPosition);
-  const occluderMeshes = getRaycastableMeshes(occluders);
-  if (!occluderMeshes.length) return;
-
-  for (const label of labels) {
-    const worldPosition = label.getWorldPosition(new THREE.Vector3());
-    const direction = worldPosition.clone().sub(cameraPosition);
-    const distance = direction.length();
-    if (distance <= 0.001) continue;
-
-    raycaster.set(cameraPosition, direction.normalize());
-    raycaster.near = 0.05;
-    raycaster.far = Math.max(0.05, distance - 0.08);
-    const blocked = raycaster.intersectObjects(occluderMeshes, false).length > 0;
-    label.element.style.visibility = blocked ? "hidden" : "visible";
-    updateAnnotationLabelScale(label, distance);
-  }
-}
-
-function updateAnnotationLabelScale(label: CSS2DObject, distance: number) {
-  const content = label.element.firstElementChild;
-  if (!(content instanceof HTMLElement)) return;
-  const scale = THREE.MathUtils.clamp(10 / Math.max(distance, 1), 0.34, 1.0);
-  content.style.setProperty("--note-scale", scale.toFixed(3));
-}
-
-function getRaycastableMeshes(objects: THREE.Object3D[]) {
-  const meshes: THREE.Mesh[] = [];
-  for (const object of objects) {
-    object.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        meshes.push(child);
-      }
-    });
-  }
-  return meshes;
-}
-
 function createExtrudedArrowShaft(start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, thickness: number, material: THREE.Material, edgeMaterial: THREE.Material) {
   const polygon = makeSegmentPolygon(start, end, width);
   return createExtrudedPolygonModel(polygon, y, thickness, material, edgeMaterial);
@@ -1929,24 +1919,58 @@ function createExtrudedPolygonModel(points: Array<{ x: number; y: number }>, y: 
 }
 
 function createAnnotationNoteLabel(annotation: AnnotationItem) {
-  const shell = document.createElement("div");
-  shell.className = "three-annotation-note-shell";
+  const texture = createAnnotationNoteTexture(annotation);
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
+  );
+  const spriteW = 1.6;
+  const spriteH = spriteW * (320 / 512);
+  sprite.scale.set(spriteW, spriteH, 1);
+  sprite.renderOrder = 1;
+  sprite.userData.body = annotation.body ?? "";
+  return sprite;
+}
 
-  const div = document.createElement("div");
-  div.className = "three-annotation-note";
-  div.style.borderColor = annotation.color;
-  div.style.color = annotation.color;
+function createAnnotationNoteTexture(annotation: AnnotationItem) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 320;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return new THREE.CanvasTexture(canvas);
 
-  const title = document.createElement("strong");
-  title.textContent = annotation.label || "Note";
-  div.appendChild(title);
+  const color = annotation.color || "#0f766e";
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
+  roundRect(ctx, 18, 58, 476, 204, 28);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 10;
+  ctx.stroke();
 
-  const detail = document.createElement("span");
-  detail.textContent = annotation.label || "Note";
-  div.appendChild(detail);
-  shell.appendChild(div);
+  ctx.fillStyle = color;
+  roundRect(ctx, 58, 126, 92, 68, 16);
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 48px Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("N", 104, 160);
 
-  return new CSS2DObject(shell);
+  ctx.fillStyle = "#0f172a";
+  ctx.textAlign = "left";
+  let fontSize = 52;
+  const label = annotation.label || "Note";
+  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  while (ctx.measureText(label).width > 300 && fontSize > 24) {
+    fontSize -= 4;
+    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  }
+  ctx.fillText(label, 176, 160);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
 }
 
 function getAnnotationArrowPoints(annotation: AnnotationItem) {

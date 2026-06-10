@@ -22,7 +22,15 @@ export function AnnotationProperties({ annotation, onUpdate, onDelete }: Annotat
             {arrowShapeOptions.map((shape) => <option key={shape.value} value={shape.value}>{shape.label}</option>)}
           </select>
         </label>
-      ) : null}
+      ) : (
+        <label>Body
+          <textarea
+            rows={4}
+            value={annotation.body ?? ""}
+            onChange={(event) => onUpdate(annotation.id, { body: event.target.value })}
+          />
+        </label>
+      )}
       <div className="annotation-color-block">
         <div className="field-title">Color</div>
         <div className="annotation-color-grid">
