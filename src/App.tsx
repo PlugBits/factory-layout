@@ -1194,8 +1194,12 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
     grid.position.set(factory.width / 2, 0.01, factory.depth / 2);
     scene.add(grid);
 
+    const annotationOccluders: THREE.Object3D[] = [];
+    const annotationLabels: CSS2DObject[] = [];
+
     for (const wall of createFactoryWalls(factory)) {
       scene.add(wall);
+      annotationOccluders.push(wall);
     }
 
     for (const [index, item] of items.entries()) {
@@ -1203,6 +1207,7 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
       model.position.set(item.x + item.width / 2, 0, item.y + item.depth / 2);
       model.rotation.y = THREE.MathUtils.degToRad(item.rotation);
       scene.add(model);
+      annotationOccluders.push(model);
 
       if (item.id === selectedId) {
         const outline = createSelectionOutline(item);
@@ -1218,8 +1223,9 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
           scene.add(createAnnotationArrowModel(annotation));
         } else {
           const note = createAnnotationNoteLabel(annotation);
-          note.position.set(annotation.x1, 0.42, annotation.y1);
+          note.position.set(annotation.x1, 0.3, annotation.y1);
           scene.add(note);
+          annotationLabels.push(note);
         }
       }
     }
@@ -1412,6 +1418,7 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
       renderer.domElement.addEventListener("pointercancel", pointerUp);
     }
 
+    const labelOcclusionRaycaster = new THREE.Raycaster();
     const clock = new THREE.Clock();
     let animation = 0;
     const render = (timestamp: number) => {
@@ -1429,6 +1436,7 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
       } else {
         clock.getDelta();
       }
+      updateAnnotationLabelOcclusion(camera, labelOcclusionRaycaster, annotationOccluders, annotationLabels);
       renderer.render(scene, camera);
       labelRenderer.render(scene, camera);
     };
@@ -1661,7 +1669,7 @@ function createWindowedWall(width: number, depth: number, height: number) {
   const group = new THREE.Group();
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(width, height, depth),
-    new THREE.MeshLambertMaterial({ color: "#94a3b8", transparent: true, opacity: 0.9, depthWrite: false })
+    new THREE.MeshLambertMaterial({ color: "#94a3b8", transparent: true, opacity: 0.9 })
   );
   body.position.set(0, height / 2, 0);
   group.add(body);
@@ -1780,7 +1788,7 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
   const shaftWidth = 0.42;
   const headLength = 1.05;
   const headWidth = 1.1;
-  const y = 0.13;
+  const y = 0.3;
 
   for (let index = 0; index < points.length - 1; index += 1) {
     const start = points[index];
@@ -1805,6 +1813,25 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
   }
 
   return group;
+}
+
+function updateAnnotationLabelOcclusion(camera: THREE.Camera, raycaster: THREE.Raycaster, occluders: THREE.Object3D[], labels: CSS2DObject[]) {
+  if (!labels.length || !occluders.length) return;
+  const cameraPosition = new THREE.Vector3();
+  camera.getWorldPosition(cameraPosition);
+
+  for (const label of labels) {
+    const worldPosition = label.getWorldPosition(new THREE.Vector3());
+    const direction = worldPosition.clone().sub(cameraPosition);
+    const distance = direction.length();
+    if (distance <= 0.001) continue;
+
+    raycaster.set(cameraPosition, direction.normalize());
+    raycaster.near = 0.05;
+    raycaster.far = Math.max(0.05, distance - 0.08);
+    const blocked = raycaster.intersectObjects(occluders, true).length > 0;
+    label.element.style.visibility = blocked ? "hidden" : "visible";
+  }
 }
 
 function createFlatArrowShaft(start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, material: THREE.Material) {
