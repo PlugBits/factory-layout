@@ -1819,6 +1819,8 @@ function updateAnnotationLabelOcclusion(camera: THREE.Camera, raycaster: THREE.R
   if (!labels.length || !occluders.length) return;
   const cameraPosition = new THREE.Vector3();
   camera.getWorldPosition(cameraPosition);
+  const occluderMeshes = getRaycastableMeshes(occluders);
+  if (!occluderMeshes.length) return;
 
   for (const label of labels) {
     const worldPosition = label.getWorldPosition(new THREE.Vector3());
@@ -1829,9 +1831,21 @@ function updateAnnotationLabelOcclusion(camera: THREE.Camera, raycaster: THREE.R
     raycaster.set(cameraPosition, direction.normalize());
     raycaster.near = 0.05;
     raycaster.far = Math.max(0.05, distance - 0.08);
-    const blocked = raycaster.intersectObjects(occluders, true).length > 0;
+    const blocked = raycaster.intersectObjects(occluderMeshes, false).length > 0;
     label.element.style.visibility = blocked ? "hidden" : "visible";
   }
+}
+
+function getRaycastableMeshes(objects: THREE.Object3D[]) {
+  const meshes: THREE.Mesh[] = [];
+  for (const object of objects) {
+    object.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        meshes.push(child);
+      }
+    });
+  }
+  return meshes;
 }
 
 function createFlatArrowShaft(start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, material: THREE.Material) {
