@@ -580,6 +580,39 @@ select {
   pointer-events: none;
 }
 
+.three-annotation-note {
+  display: inline-grid;
+  gap: 2px;
+  max-width: 180px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.95);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+  padding: 4px 7px;
+  pointer-events: auto;
+  transform: translate(-50%, -100%);
+  white-space: nowrap;
+}
+
+.three-annotation-note span {
+  display: none;
+  max-width: 180px;
+  color: #172033;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.three-annotation-note:hover {
+  z-index: 10;
+  min-width: 140px;
+}
+
+.three-annotation-note:hover span {
+  display: block;
+}
+
 .properties {
   border-left: 1px solid #cad3df;
 }

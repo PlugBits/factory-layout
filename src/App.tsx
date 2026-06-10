@@ -938,6 +938,8 @@ function App() {
             <ThreePreview
               factory={factory}
               items={localizedItems}
+              annotations={annotations}
+              annotationLayerVisible={annotationLayerVisible}
               selectedId={selectedId}
               orbitTargetMode={orbitTargetMode}
               presentSignalRef={presentSignalRef}
@@ -1104,9 +1106,11 @@ function App() {
   );
 }
 
-function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSignalRef, onPresentDone, waypointsRef, presentMoveSecRef, presentRotateSecRef, walkHelp }: {
+function ThreePreview({ factory, items, annotations, annotationLayerVisible, selectedId, orbitTargetMode, presentSignalRef, onPresentDone, waypointsRef, presentMoveSecRef, presentRotateSecRef, walkHelp }: {
   factory: ProjectFile["factory"];
   items: LayoutItem[];
+  annotations: AnnotationItem[];
+  annotationLayerVisible: boolean;
   selectedId: string | null;
   orbitTargetMode: OrbitTargetMode;
   presentSignalRef?: React.MutableRefObject<(() => void) | null>;
@@ -1205,6 +1209,18 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
         outline.position.copy(model.position);
         outline.rotation.copy(model.rotation);
         scene.add(outline);
+      }
+    }
+
+    if (annotationLayerVisible) {
+      for (const annotation of annotations.filter((entry) => entry.visible)) {
+        if (annotation.kind === "arrow") {
+          scene.add(createAnnotationArrowModel(annotation));
+        } else {
+          const note = createAnnotationNoteLabel(annotation);
+          note.position.set(annotation.x1, 0.42, annotation.y1);
+          scene.add(note);
+        }
       }
     }
 
@@ -1435,7 +1451,7 @@ function ThreePreview({ factory, items, selectedId, orbitTargetMode, presentSign
       renderer.dispose();
       mount.innerHTML = "";
     };
-  }, [factory, items, selectedId, orbitTargetMode]);
+  }, [factory, items, annotations, annotationLayerVisible, selectedId, orbitTargetMode]);
 
   return (
     <div className="three-preview-wrap">
@@ -1748,6 +1764,83 @@ function createEquipmentModel(item: LayoutItem) {
   }
 
   return group;
+}
+
+function createAnnotationArrowModel(annotation: AnnotationItem) {
+  const group = new THREE.Group();
+  const color = new THREE.Color(annotation.color);
+  const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 });
+  const points = getAnnotationArrowPoints(annotation).map((point) => new THREE.Vector3(point.x, 0.12, point.y));
+  const shaftRadius = 0.08;
+  const headLength = 0.55;
+  const headRadius = 0.24;
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const isLast = index === points.length - 2;
+    const direction = end.clone().sub(start);
+    const length = direction.length();
+    if (length < 0.05) continue;
+    direction.normalize();
+    const shaftEnd = isLast && length > headLength ? end.clone().sub(direction.clone().multiplyScalar(headLength * 0.7)) : end;
+    const shaft = createCylinderBetween(start, shaftEnd, shaftRadius, material);
+    group.add(shaft);
+
+    if (isLast) {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(headRadius, headLength, 4), material);
+      cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+      cone.position.copy(end.clone().sub(direction.clone().multiplyScalar(headLength / 2)));
+      cone.rotation.z += Math.PI / 4;
+      group.add(cone);
+    }
+  }
+
+  return group;
+}
+
+function createCylinderBetween(start: THREE.Vector3, end: THREE.Vector3, radius: number, material: THREE.Material) {
+  const direction = end.clone().sub(start);
+  const length = direction.length();
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, Math.max(length, 0.01), 8), material);
+  mesh.position.copy(start.clone().add(end).multiplyScalar(0.5));
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+  return mesh;
+}
+
+function createAnnotationNoteLabel(annotation: AnnotationItem) {
+  const div = document.createElement("div");
+  div.className = "three-annotation-note";
+  div.style.borderColor = annotation.color;
+  div.style.color = annotation.color;
+
+  const title = document.createElement("strong");
+  title.textContent = annotation.label || "Note";
+  div.appendChild(title);
+
+  const detail = document.createElement("span");
+  detail.textContent = annotation.label || "Note";
+  div.appendChild(detail);
+
+  return new CSS2DObject(div);
+}
+
+function getAnnotationArrowPoints(annotation: AnnotationItem) {
+  if ((annotation.shape ?? "straight") === "straight") {
+    return [{ x: annotation.x1, y: annotation.y1 }, { x: annotation.x2, y: annotation.y2 }];
+  }
+
+  const bend = getAnnotationArrowBend(annotation);
+  return [{ x: annotation.x1, y: annotation.y1 }, bend, { x: annotation.x2, y: annotation.y2 }];
+}
+
+function getAnnotationArrowBend(annotation: AnnotationItem) {
+  const shape = annotation.shape ?? "straight";
+  if (shape === "left-turn") return { x: annotation.x1, y: annotation.y2 };
+  if (shape === "right-turn") return { x: annotation.x2, y: annotation.y1 };
+
+  const horizontalFirst = Math.abs(annotation.x2 - annotation.x1) >= Math.abs(annotation.y2 - annotation.y1);
+  return horizontalFirst ? { x: annotation.x2, y: annotation.y1 } : { x: annotation.x1, y: annotation.y2 };
 }
 
 function addWindowPanels(group: THREE.Group, width: number, depth: number, height: number) {
