@@ -45,9 +45,9 @@ export const arrowFlowTypeOptions: Array<{ label: string; value: ArrowFlowType; 
 ];
 
 export const arrowStyleOptions: Array<{ label: string; value: ArrowStyle }> = [
-  { label: "Floor marks", value: "band" },
+  { label: "Solid", value: "band" },
   { label: "Dashed", value: "dashed" },
-  { label: "Markers", value: "markers" }
+  { label: "Thin", value: "markers" }
 ];
 
 export const noteIconOptions: Array<{ label: string; value: NoteIcon }> = [

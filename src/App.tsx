@@ -29,6 +29,7 @@ import type {
   OrbitTargetMode,
   ProjectFile,
   ProjectSnapshot,
+  TrafficDirection,
   ViewMode,
   WallSide,
   Waypoint
@@ -94,6 +95,12 @@ const defaultFactory = { width: 30, depth: 18, grid: 1, majorGrid: 4, walls: def
 const draftStorageKey = "factory-layout-draft";
 const languageStorageKey = "factory-layout-language";
 const historyLimit = 100;
+const trafficDirectionOptions: Array<{ label: string; value: TrafficDirection }> = [
+  { label: "None", value: "none" },
+  { label: "One way forward", value: "forward" },
+  { label: "One way reverse", value: "reverse" },
+  { label: "Two way", value: "two-way" }
+];
 
 function makeId(prefix: string) {
   return `${prefix}-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`;
@@ -1078,6 +1085,40 @@ function App() {
                     <label>{text("rotate")}<select value={selectedItem.rotation} onChange={(event) => updateItem(selectedItem.id, { rotation: Number(event.target.value) as LayoutItem["rotation"] })}>
                       {[0, 90, 180, 270].map((angle) => <option key={angle} value={angle}>{angle}°</option>)}
                     </select></label>
+                    {selectedItem.templateId === "forklift-aisle" ? (
+                      <div className="route-sign-panel">
+                        <div className="field-title">Forklift Route Signs</div>
+                        <label>Traffic direction
+                          <select
+                            value={selectedItem.trafficDirection ?? "none"}
+                            onChange={(event) => {
+                              const trafficDirection = event.target.value as TrafficDirection;
+                              updateItem(selectedItem.id, {
+                                trafficDirection,
+                                showFloorSigns: trafficDirection === "none" ? selectedItem.showFloorSigns : true,
+                                floorLabel: selectedItem.floorLabel ?? (trafficDirection === "two-way" ? "TWO WAY" : "ONE WAY")
+                              });
+                            }}
+                          >
+                            {trafficDirectionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                          </select>
+                        </label>
+                        <label>Floor label
+                          <input
+                            value={selectedItem.floorLabel ?? ((selectedItem.trafficDirection ?? "none") === "two-way" ? "TWO WAY" : "ONE WAY")}
+                            onChange={(event) => updateItem(selectedItem.id, { floorLabel: event.target.value })}
+                          />
+                        </label>
+                        <label className="inline-toggle">
+                          <input
+                            type="checkbox"
+                            checked={selectedItem.showFloorSigns !== false}
+                            onChange={(event) => updateItem(selectedItem.id, { showFloorSigns: event.target.checked })}
+                          />
+                          Show floor signs
+                        </label>
+                      </div>
+                    ) : null}
                     <div className="color-panel">
                       <div className="field-title">{text("color")}</div>
                       <div className="color-grid">
@@ -1209,7 +1250,7 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
     grid.position.set(factory.width / 2, 0.01, factory.depth / 2);
     scene.add(grid);
 
-    const annotationNoteSprites: THREE.Sprite[] = [];
+    const annotationHoverTargets: THREE.Object3D[] = [];
 
     for (const wall of createFactoryWalls(factory)) {
       scene.add(wall);
@@ -1232,12 +1273,14 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
     if (annotationLayerVisible) {
       for (const annotation of annotations.filter((entry) => entry.visible)) {
         if (annotation.kind === "arrow") {
-          scene.add(createAnnotationArrowModel(annotation));
+          const arrow = createAnnotationArrowModel(annotation);
+          scene.add(arrow);
+          collectAnnotationHoverTargets(arrow, annotationHoverTargets);
         } else {
           const note = createAnnotationNoteLabel(annotation);
           note.position.set(annotation.x1, 0.7, annotation.y1);
           scene.add(note);
-          annotationNoteSprites.push(note);
+          annotationHoverTargets.push(note);
         }
       }
     }
@@ -1438,13 +1481,13 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
     const noteHoverRaycaster = new THREE.Raycaster();
     const noteHoverPointer = new THREE.Vector2();
     const updateNoteHover = (event: PointerEvent) => {
-      if (!annotationNoteSprites.length) return;
+      if (!annotationHoverTargets.length) return;
       const rect = renderer.domElement.getBoundingClientRect();
       noteHoverPointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       noteHoverPointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       noteHoverRaycaster.camera = camera;
       noteHoverRaycaster.setFromCamera(noteHoverPointer, camera);
-      const hit = noteHoverRaycaster.intersectObjects(annotationNoteSprites, false)[0]?.object as THREE.Sprite | undefined;
+      const hit = noteHoverRaycaster.intersectObjects(annotationHoverTargets, false)[0]?.object;
       const body = hit?.userData.body as string | undefined;
       if (!body?.trim()) {
         noteTooltip.style.display = "none";
@@ -1696,6 +1739,12 @@ function isWalkKey(code: string) {
   return ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight", "ShiftLeft", "ShiftRight"].includes(code);
 }
 
+function collectAnnotationHoverTargets(root: THREE.Object3D, targets: THREE.Object3D[]) {
+  root.traverse((object) => {
+    if (typeof object.userData.body === "string") targets.push(object);
+  });
+}
+
 function isFormField(target: EventTarget | null) {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
 }
@@ -1853,6 +1902,10 @@ function createEquipmentModel(item: LayoutItem) {
   edge.position.copy(body.position);
   group.add(edge);
 
+  if (id === "forklift-aisle") {
+    addForkliftRouteSigns(group, item, w, d, visibleHeight);
+  }
+
   addTopIcon(group, item, w, d, visibleHeight);
 
   if (id === "crane") {
@@ -1866,136 +1919,244 @@ function createEquipmentModel(item: LayoutItem) {
   return group;
 }
 
+function addForkliftRouteSigns(group: THREE.Group, item: LayoutItem, width: number, depth: number, height: number) {
+  const direction = item.trafficDirection ?? "none";
+  if (direction === "none" || item.showFloorSigns === false) return;
+
+  const baseColor = new THREE.Color(item.color);
+  const signColor = baseColor.clone().multiplyScalar(0.62);
+  const fillMaterial = new THREE.MeshBasicMaterial({
+    color: signColor.clone().lerp(new THREE.Color("#ffffff"), 0.18),
+    transparent: true,
+    opacity: 0.48,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+  const outlineMaterial = new THREE.LineBasicMaterial({
+    color: signColor,
+    transparent: true,
+    opacity: 0.82,
+    depthWrite: false
+  });
+  const lineMaterial = new THREE.MeshBasicMaterial({
+    color: signColor,
+    transparent: true,
+    opacity: 0.54,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+  const y = height + 0.018;
+  const routeInset = Math.min(1.0, width * 0.14);
+  const startX = -width / 2 + routeInset;
+  const endX = width / 2 - routeInset;
+  const centerZ = 0;
+  const lineWidth = Math.min(0.12, Math.max(0.06, depth * 0.045));
+  const markerLength = Math.min(0.6, Math.max(0.36, width * 0.08));
+  const markerWidth = Math.min(0.42, Math.max(0.26, depth * 0.22));
+  const lanes = direction === "two-way"
+    ? [{ z: -depth * 0.18, sign: 1 }, { z: depth * 0.18, sign: -1 }]
+    : [{ z: centerZ, sign: direction === "reverse" ? -1 : 1 }];
+
+  for (const lane of lanes) {
+    group.add(createFloorSignMark(
+      makeSegmentPolygon({ x: startX, y: lane.z }, { x: endX, y: lane.z }, lineWidth),
+      y,
+      lineMaterial,
+      outlineMaterial,
+      0.58
+    ));
+    const length = Math.abs(endX - startX);
+    const count = Math.max(1, Math.min(4, Math.floor(length / 3.0)));
+    for (let index = 1; index <= count; index += 1) {
+      const t = index / (count + 1);
+      const x = startX + (endX - startX) * t;
+      group.add(createFloorSignMark(
+        makeFloorChevron({ x, y: lane.z }, lane.sign > 0 ? 0 : Math.PI, markerLength, markerWidth),
+        y + 0.008,
+        fillMaterial,
+        outlineMaterial,
+        0.82
+      ));
+    }
+  }
+
+  const labelText = (item.floorLabel ?? (direction === "two-way" ? "TWO WAY" : "ONE WAY")).trim();
+  if (labelText) {
+    const label = createFloorRouteLabel(labelText, item.color);
+    label.position.set(0, y + 0.012, direction === "two-way" ? 0 : -depth * 0.22);
+    label.rotation.x = -Math.PI / 2;
+    label.rotation.z = direction === "reverse" ? Math.PI : 0;
+    group.add(label);
+  }
+}
+
+function makeFloorChevron(center: { x: number; y: number }, angle: number, length: number, width: number) {
+  const ux = Math.cos(angle);
+  const uz = Math.sin(angle);
+  const px = -uz;
+  const pz = ux;
+  const tip = { x: center.x + ux * length * 0.5, y: center.y + uz * length * 0.5 };
+  const base = { x: center.x - ux * length * 0.5, y: center.y - uz * length * 0.5 };
+  return [
+    tip,
+    { x: base.x + px * width / 2, y: base.y + pz * width / 2 },
+    { x: base.x - px * width / 2, y: base.y - pz * width / 2 }
+  ];
+}
+
+function createFloorRouteLabel(text: string, color: string) {
+  const texture = createFlowLabelTexture(text, color);
+  const width = getFlowLabelSpriteWidth(text);
+  const label = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, 0.42),
+    new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, depthWrite: false })
+  );
+  label.renderOrder = 0.94;
+  return label;
+}
+
 function createAnnotationArrowModel(annotation: AnnotationItem) {
   const group = new THREE.Group();
   const baseColor = new THREE.Color(annotation.color);
-  const fillColor = baseColor.clone().lerp(new THREE.Color("#ffffff"), 0.34);
-  const edgeColor = baseColor.clone().multiplyScalar(0.62);
   const style = annotation.flowStyle ?? "band";
-  const bandFillMaterial = new THREE.MeshBasicMaterial({
-    color: fillColor,
+  const lineMaterial = new THREE.MeshBasicMaterial({
+    color: baseColor,
     transparent: true,
-    opacity: getFloorSignBandOpacity(annotation),
-    side: THREE.DoubleSide,
-    depthWrite: false
-  });
-  const bandOutlineMaterial = new THREE.LineBasicMaterial({
-    color: edgeColor,
-    transparent: true,
-    opacity: style === "markers" ? 0.32 : 0.5,
-    depthWrite: false
-  });
-  const markFillMaterial = new THREE.MeshBasicMaterial({
-    color: fillColor,
-    transparent: true,
-    opacity: getFloorSignMarkerOpacity(annotation),
-    side: THREE.DoubleSide,
-    depthWrite: false
-  });
-  const markOutlineMaterial = new THREE.LineBasicMaterial({
-    color: edgeColor,
-    transparent: true,
-    opacity: 0.88,
+    opacity: style === "dashed" ? 0.78 : 0.86,
     depthWrite: false
   });
   const points = getAnnotationArrowPoints(annotation);
-  const bandWidth = style === "markers" ? 0.46 : style === "dashed" ? 0.56 : 0.72;
-  const markerLength = style === "markers" ? 0.82 : 1.02;
-  const markerWidth = style === "markers" ? 0.72 : 0.86;
-  const headLength = style === "markers" ? 0.96 : 1.12;
-  const headWidth = style === "markers" ? 1.02 : 1.12;
-  const bandY = 0.083;
-  const markY = bandY + 0.018;
+  const y = 0.42;
+  const radius = style === "markers" ? 0.035 : 0.045;
 
   for (let index = 0; index < points.length - 1; index += 1) {
     const start = points[index];
     const end = points[index + 1];
-    const dx = end.x - start.x;
-    const dz = end.y - start.y;
-    const length = Math.hypot(dx, dz);
-    if (length < 0.05) continue;
-
-    addFloorSignBand(group, start, end, bandWidth, bandY, style, bandFillMaterial, bandOutlineMaterial);
-  }
-
-  if (annotation.showMarkers !== false && style !== "dashed") {
-    for (const marker of getAnnotationArrowMarkerPolygons(annotation, style === "markers" ? 2.25 : 3.0, markerLength, markerWidth)) {
-      group.add(createFloorSignMark(marker, markY, markFillMaterial, markOutlineMaterial, 0.78));
-    }
+    addFloatingArrowSegment(group, start, end, y, radius, style, lineMaterial);
   }
 
   const lastStart = points[points.length - 2];
   const lastEnd = points[points.length - 1];
   if (lastStart && lastEnd) {
-    if (style === "dashed" || annotation.showMarkers !== false) {
-      group.add(createFloorSignArrowHead(lastStart, lastEnd, headLength, headWidth, markY + 0.004, markFillMaterial, markOutlineMaterial));
-    }
+    group.add(createFloatingArrowHead(lastStart, lastEnd, y, baseColor));
   }
 
   if (annotation.label.trim()) {
-    addFloorLabels(group, annotation, markY + 0.012, edgeColor);
+    const labelPoint = getAnnotationLabelPoint3D(annotation);
+    const label = createAnnotationArrowLabel(annotation);
+    label.position.set(labelPoint.x, 0.82, labelPoint.y);
+    group.add(label);
   }
 
   return group;
 }
 
-function getFloorSignBandOpacity(annotation: AnnotationItem) {
-  const style = annotation.flowStyle ?? "band";
-  if (style === "markers") return 0.12;
-  if (style === "dashed") return 0.18;
-  if ((annotation.flowType ?? "material") === "forklift") return 0.2;
-  return 0.16;
-}
-
-function getFloorSignMarkerOpacity(annotation: AnnotationItem) {
-  const style = annotation.flowStyle ?? "band";
-  if (style === "markers") return 0.38;
-  if (style === "dashed") return 0.34;
-  if ((annotation.flowType ?? "material") === "forklift") return 0.36;
-  return 0.32;
-}
-
-function createFloorSignArrowHead(start: { x: number; y: number }, end: { x: number; y: number }, length: number, width: number, y: number, fillMaterial: THREE.Material, outlineMaterial: THREE.Material) {
-  const dx = end.x - start.x;
-  const dz = end.y - start.y;
-  const segmentLength = Math.hypot(dx, dz) || 1;
-  const ux = dx / segmentLength;
-  const uz = dz / segmentLength;
-  const px = -uz;
-  const pz = ux;
-  const actualLength = Math.min(length, Math.max(0.35, segmentLength * 0.75));
-  const base = { x: end.x - ux * actualLength, y: end.y - uz * actualLength };
-  const polygon = [
-    end,
-    { x: base.x + px * width / 2, y: base.y + pz * width / 2 },
-    { x: base.x - px * width / 2, y: base.y - pz * width / 2 }
-  ];
-  return createFloorSignMark(polygon, y, fillMaterial, outlineMaterial);
-}
-
-function addFloorSignBand(group: THREE.Group, start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, style: ArrowStyle, fillMaterial: THREE.Material, outlineMaterial: THREE.Material) {
+function addFloatingArrowSegment(group: THREE.Group, start: { x: number; y: number }, end: { x: number; y: number }, y: number, radius: number, style: ArrowStyle, material: THREE.Material) {
   const dx = end.x - start.x;
   const dz = end.y - start.y;
   const length = Math.hypot(dx, dz);
   if (length < 0.05) return;
 
   if (style !== "dashed") {
-    group.add(createFloorSignMark(makeSegmentPolygon(start, end, width), y, fillMaterial, outlineMaterial, 0.42));
+    group.add(createFloatingCylinder(start, end, y, radius, material));
     return;
   }
 
   const ux = dx / length;
   const uz = dz / length;
-  const dashLength = 1.45;
+  const dashLength = 1.1;
   const gapLength = 0.55;
   for (let cursor = 0; cursor < length - 0.12; cursor += dashLength + gapLength) {
-    const dashStartDistance = cursor;
     const dashEndDistance = Math.min(length, cursor + dashLength);
-    if (dashEndDistance - dashStartDistance < 0.22) continue;
-    const dashStart = { x: start.x + ux * dashStartDistance, y: start.y + uz * dashStartDistance };
-    const dashEnd = { x: start.x + ux * dashEndDistance, y: start.y + uz * dashEndDistance };
-    group.add(createFloorSignMark(makeSegmentPolygon(dashStart, dashEnd, width), y, fillMaterial, outlineMaterial, 0.42));
+    if (dashEndDistance - cursor < 0.22) continue;
+    group.add(createFloatingCylinder(
+      { x: start.x + ux * cursor, y: start.y + uz * cursor },
+      { x: start.x + ux * dashEndDistance, y: start.y + uz * dashEndDistance },
+      y,
+      radius,
+      material
+    ));
   }
+}
+
+function createFloatingCylinder(start: { x: number; y: number }, end: { x: number; y: number }, y: number, radius: number, material: THREE.Material) {
+  const dx = end.x - start.x;
+  const dz = end.y - start.y;
+  const length = Math.hypot(dx, dz);
+  const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 10), material);
+  cylinder.position.set((start.x + end.x) / 2, y, (start.y + end.y) / 2);
+  const direction = new THREE.Vector3(dx, 0, dz).normalize();
+  cylinder.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+  cylinder.renderOrder = 1.2;
+  return cylinder;
+}
+
+function createFloatingArrowHead(start: { x: number; y: number }, end: { x: number; y: number }, y: number, color: THREE.Color) {
+  const dx = end.x - start.x;
+  const dz = end.y - start.y;
+  const length = Math.hypot(dx, dz) || 1;
+  const direction = new THREE.Vector3(dx / length, 0, dz / length);
+  const head = new THREE.Mesh(
+    new THREE.ConeGeometry(0.22, 0.58, 18),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false })
+  );
+  head.position.set(end.x - direction.x * 0.18, y, end.y - direction.z * 0.18);
+  head.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+  head.renderOrder = 1.25;
+  return head;
+}
+
+function createAnnotationArrowLabel(annotation: AnnotationItem) {
+  const texture = createFlowLabelTexture(annotation.label.trim(), annotation.color);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
+  const width = getFlowLabelSpriteWidth(annotation.label.trim());
+  sprite.scale.set(width, 0.48, 1);
+  sprite.renderOrder = 1.35;
+  sprite.userData.body = annotation.body ?? "";
+  sprite.userData.color = annotation.color;
+  return sprite;
+}
+
+function getFlowLabelSpriteWidth(text: string) {
+  return THREE.MathUtils.clamp(0.95 + text.length * 0.09, 1.3, 2.5);
+}
+
+function createFlowLabelTexture(text: string, color: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 160;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return new THREE.CanvasTexture(canvas);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "rgba(255,255,255,0.94)";
+  roundRect(ctx, 22, 34, 468, 92, 18);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 8;
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  let fontSize = 54;
+  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  while (ctx.measureText(text).width > 410 && fontSize > 24) {
+    fontSize -= 4;
+    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  }
+  ctx.fillText(text, 256, 80);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}
+
+function getAnnotationLabelPoint3D(annotation: AnnotationItem) {
+  if ((annotation.shape ?? "straight") === "straight") {
+    return { x: (annotation.x1 + annotation.x2) / 2, y: (annotation.y1 + annotation.y2) / 2 };
+  }
+  return getAnnotationArrowBend(annotation);
 }
 
 function createFloorSignPolygon(points: Array<{ x: number; y: number }>, y: number, material: THREE.Material) {

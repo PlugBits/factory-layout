@@ -10,6 +10,7 @@ export type ArrowShape = "straight" | "elbow" | "left-turn" | "right-turn";
 export type ArrowFlowType = "material" | "forklift" | "worker" | "warning" | "custom";
 export type ArrowStyle = "band" | "dashed" | "markers";
 export type NoteIcon = "note" | "info" | "warning";
+export type TrafficDirection = "none" | "forward" | "reverse" | "two-way";
 
 export type AnnotationItem = {
   id: string;
@@ -53,6 +54,9 @@ export type LayoutItem = {
   rotation: 0 | 90 | 180 | 270;
   color: string;
   icon: string;
+  trafficDirection?: TrafficDirection;
+  floorLabel?: string;
+  showFloorSigns?: boolean;
 };
 
 export type FactorySettings = {

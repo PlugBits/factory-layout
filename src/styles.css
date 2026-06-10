@@ -319,6 +319,15 @@ textarea {
   min-height: auto;
 }
 
+.route-sign-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #cad3df;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
 .primary-button {
   width: 100%;
   border-color: #2563eb;
@@ -550,6 +559,66 @@ textarea {
 .item-size {
   color: rgba(255, 255, 255, 0.9);
   font-size: 10px;
+}
+
+.item-route-signs {
+  position: absolute;
+  inset: 44% 10%;
+  pointer-events: none;
+}
+
+.item-route-signs .route-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 3px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.62);
+}
+
+.item-route-signs .route-chevron {
+  position: absolute;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-left: 12px solid rgba(15, 118, 110, 0.78);
+  transform: translate(-50%, -50%);
+}
+
+.item-route-signs .route-chevron-a {
+  left: 35%;
+}
+
+.item-route-signs .route-chevron-b {
+  left: 68%;
+}
+
+.item-route-signs.route-reverse .route-chevron,
+.item-route-signs.route-two-way .route-chevron-b {
+  transform: translate(-50%, -50%) rotate(180deg);
+}
+
+.item-route-signs .route-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: 72%;
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(15, 118, 110, 0.72);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #0f766e;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 3px 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .three-preview-wrap {

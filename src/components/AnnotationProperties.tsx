@@ -60,6 +60,13 @@ export function AnnotationProperties({ annotation, onUpdate, onDelete }: Annotat
             />
             Snap to aisle
           </label>
+          <label>Body
+            <textarea
+              rows={4}
+              value={annotation.body ?? ""}
+              onChange={(event) => onUpdate(annotation.id, { body: event.target.value })}
+            />
+          </label>
         </>
       ) : (
         <>
