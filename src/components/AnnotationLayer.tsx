@@ -12,6 +12,9 @@ type AnnotationLayerProps = {
   onAddNote: (x: number, y: number) => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
+  onStartMove: (id: string, x: number, y: number) => void;
+  onMove: (id: string, x: number, y: number) => void;
+  onEndMove: () => void;
 };
 
 export function AnnotationLayer({
@@ -24,28 +27,38 @@ export function AnnotationLayer({
   onFinishArrow,
   onAddNote,
   onSelect,
-  onDelete
+  onDelete,
+  onStartMove,
+  onMove,
+  onEndMove
 }: AnnotationLayerProps) {
   if (!visible) return null;
+
+  const getBoardPoint = (event: React.PointerEvent<HTMLElement | SVGElement>) => {
+    const layer = (event.currentTarget.closest(".annotation-layer") as HTMLElement | null) ?? event.currentTarget;
+    const rect = layer.getBoundingClientRect();
+    return {
+      x: (event.clientX - rect.left) / pxPerMeter,
+      y: (event.clientY - rect.top) / pxPerMeter
+    };
+  };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!activeTool || event.button !== 0) return;
     event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / pxPerMeter;
-    const y = (event.clientY - rect.top) / pxPerMeter;
+    const point = getBoardPoint(event);
     if (activeTool === "arrow") {
-      onStartArrow(x, y);
+      onStartArrow(point.x, point.y);
     } else {
-      onAddNote(x, y);
+      onAddNote(point.x, point.y);
     }
   };
 
   const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
     if (activeTool !== "arrow" || event.button !== 0) return;
     event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
-    onFinishArrow((event.clientX - rect.left) / pxPerMeter, (event.clientY - rect.top) / pxPerMeter);
+    const point = getBoardPoint(event);
+    onFinishArrow(point.x, point.y);
   };
 
   return (
@@ -60,14 +73,14 @@ export function AnnotationLayer({
             <marker
               key={`marker-${annotation.id}`}
               id={`arrow-head-${annotation.id}`}
-              markerWidth="10"
-              markerHeight="10"
-              refX="8"
-              refY="3"
+              markerWidth="28"
+              markerHeight="24"
+              refX="24"
+              refY="12"
               orient="auto"
-              markerUnits="strokeWidth"
+              markerUnits="userSpaceOnUse"
             >
-              <path d="M0,0 L0,6 L9,3 z" fill={annotation.color} />
+              <path d="M0,0 L0,24 L28,12 z" fill={annotation.color} />
             </marker>
           ))}
         </defs>
@@ -84,29 +97,66 @@ export function AnnotationLayer({
           </g>
         ))}
       </svg>
-      {annotations.filter((annotation) => annotation.visible).map((annotation) => (
-        <button
-          key={annotation.id}
-          type="button"
-          className={`annotation-hit annotation-${annotation.kind}${annotation.id === selectedId ? " selected" : ""}`}
-          style={{ left: annotation.x1 * pxPerMeter, top: annotation.y1 * pxPerMeter, color: annotation.color }}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={() => onSelect(annotation.id)}
-        >
-          {annotation.kind === "arrow" ? <MoveRight size={14} /> : <MessageSquare size={14} />}
-          <span>{annotation.label}</span>
-          {annotation.id === selectedId ? (
-            <Trash2
-              size={14}
-              className="annotation-delete-icon"
-              onClick={(event) => {
-                event.stopPropagation();
-                onDelete(annotation.id);
-              }}
-            />
-          ) : null}
-        </button>
-      ))}
+      {annotations.filter((annotation) => annotation.visible).map((annotation) => {
+        const labelX = annotation.kind === "arrow" ? (annotation.x1 + annotation.x2) / 2 : annotation.x1;
+        const labelY = annotation.kind === "arrow" ? (annotation.y1 + annotation.y2) / 2 : annotation.y1;
+
+        return (
+          <button
+            key={annotation.id}
+            type="button"
+            className={`annotation-hit annotation-${annotation.kind}${annotation.id === selectedId ? " selected" : ""}`}
+            style={{ left: labelX * pxPerMeter, top: labelY * pxPerMeter, color: annotation.color }}
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              event.stopPropagation();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              const point = getBoardPoint(event);
+              onSelect(annotation.id);
+              onStartMove(annotation.id, point.x, point.y);
+            }}
+            onPointerMove={(event) => {
+              if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+              event.stopPropagation();
+              const point = getBoardPoint(event);
+              onMove(annotation.id, point.x, point.y);
+            }}
+            onPointerUp={(event) => {
+              event.stopPropagation();
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+              onEndMove();
+            }}
+            onPointerCancel={(event) => {
+              event.stopPropagation();
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+              onEndMove();
+            }}
+            onClick={() => onSelect(annotation.id)}
+          >
+            {annotation.kind === "arrow" ? <MoveRight size={14} /> : <MessageSquare size={14} />}
+            <span>{annotation.label}</span>
+            {annotation.id === selectedId ? (
+              <span
+                className="annotation-delete-icon"
+                role="button"
+                tabIndex={0}
+                aria-label="Delete"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDelete(annotation.id);
+                }}
+              >
+                <Trash2 size={14} />
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -122,6 +172,17 @@ type AnnotationPanelProps = {
   onUpdate: (id: string, patch: Partial<AnnotationItem>) => void;
   onDelete: (id: string) => void;
 };
+
+const annotationColors = [
+  { label: "Red", value: "#dc2626" },
+  { label: "Orange", value: "#ea580c" },
+  { label: "Yellow", value: "#ca8a04" },
+  { label: "Green", value: "#16a34a" },
+  { label: "Teal", value: "#0f766e" },
+  { label: "Blue", value: "#2563eb" },
+  { label: "Violet", value: "#7c3aed" },
+  { label: "Slate", value: "#334155" }
+];
 
 export function AnnotationPanel({
   annotations,
@@ -161,13 +222,27 @@ export function AnnotationPanel({
             <span>{annotation.label}</span>
           </button>
         )) : (
-          <p>2D viewでArrow/Noteを選び、図面上をクリックして追加します。</p>
+          <p>Arrow is added by dragging on the board. Note is added by clicking.</p>
         )}
       </div>
       {selectedAnnotation ? (
         <div className="annotation-fields">
           <label>Label<input value={selectedAnnotation.label} onChange={(event) => onUpdate(selectedAnnotation.id, { label: event.target.value })} /></label>
-          <label>Color<input type="color" value={selectedAnnotation.color} onChange={(event) => onUpdate(selectedAnnotation.id, { color: event.target.value })} /></label>
+          <div className="annotation-color-block">
+            <div className="field-title">Color</div>
+            <div className="annotation-color-grid">
+              {annotationColors.map((color) => (
+                <button
+                  key={color.value}
+                  type="button"
+                  className={selectedAnnotation.color.toLowerCase() === color.value ? "color-swatch active" : "color-swatch"}
+                  title={color.label}
+                  style={{ backgroundColor: color.value }}
+                  onClick={() => onUpdate(selectedAnnotation.id, { color: color.value })}
+                />
+              ))}
+            </div>
+          </div>
           <label className="inline-toggle">
             <input type="checkbox" checked={selectedAnnotation.visible} onChange={(event) => onUpdate(selectedAnnotation.id, { visible: event.target.checked })} />
             Visible

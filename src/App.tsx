@@ -151,6 +151,7 @@ function App() {
   const [annotationLayerVisible, setAnnotationLayerVisible] = useState(() => draftProject?.annotationLayerVisible ?? true);
   const [annotationTool, setAnnotationTool] = useState<AnnotationKind | null>(null);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  const [annotationDrag, setAnnotationDrag] = useState<{ id: string; startX: number; startY: number; original: AnnotationItem } | null>(null);
   const [undoStack, setUndoStack] = useState<ProjectSnapshot[]>([]);
   const [redoStack, setRedoStack] = useState<ProjectSnapshot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -181,6 +182,7 @@ function App() {
   const [edgePair, setEdgePair] = useState<EdgePair>("right-left");
   const dragStartSnapshotRef = useRef<ProjectSnapshot | null>(null);
   const annotationArrowStartRef = useRef<{ x: number; y: number } | null>(null);
+  const annotationDragStartSnapshotRef = useRef<ProjectSnapshot | null>(null);
 
   const basePxPerMeter = useMemo(() => Math.max(22, Math.min(52, 960 / factory.width)), [factory.width]);
   const pxPerMeter = basePxPerMeter * zoom;
@@ -329,6 +331,31 @@ function App() {
   const deleteAnnotation = (id: string) => {
     updateAnnotations((current) => current.filter((annotation) => annotation.id !== id));
     if (selectedAnnotationId === id) setSelectedAnnotationId(null);
+  };
+
+  const startAnnotationMove = (id: string, rawX: number, rawY: number) => {
+    const annotation = annotations.find((entry) => entry.id === id);
+    if (!annotation) return;
+    setSelectedAnnotationId(id);
+    annotationDragStartSnapshotRef.current = makeProjectSnapshot();
+    setAnnotationDrag({ id, startX: rawX, startY: rawY, original: annotation });
+  };
+
+  const moveAnnotation = (id: string, rawX: number, rawY: number) => {
+    if (!annotationDrag || annotationDrag.id !== id) return;
+    const dx = rawX - annotationDrag.startX;
+    const dy = rawY - annotationDrag.startY;
+    const next = moveAnnotationBy(annotationDrag.original, dx, dy, factory.width, factory.depth);
+    setAnnotations((current) => current.map((annotation) => annotation.id === id ? next : annotation));
+  };
+
+  const endAnnotationMove = () => {
+    const beforeDrag = annotationDragStartSnapshotRef.current;
+    if (annotationDrag && beforeDrag) {
+      recordHistory(beforeDrag);
+    }
+    annotationDragStartSnapshotRef.current = null;
+    setAnnotationDrag(null);
   };
 
   // 選択中のedgePairで計算した現在の実際の間隔（リアルタイム更新）
@@ -658,6 +685,7 @@ function App() {
           onSetTool={(tool) => {
             setWaypointMode(false);
             setAnnotationTool(tool);
+            if (tool) setAnnotationLayerVisible(true);
           }}
           onSelect={setSelectedAnnotationId}
           onUpdate={updateAnnotation}
@@ -822,6 +850,9 @@ function App() {
                   onAddNote={addAnnotationNote}
                   onSelect={setSelectedAnnotationId}
                   onDelete={deleteAnnotation}
+                  onStartMove={startAnnotationMove}
+                  onMove={moveAnnotation}
+                  onEndMove={endAnnotationMove}
                 />
                 {waypointMode && (
                   <div
@@ -1396,6 +1427,22 @@ function snapSize(value: number, grid: number) {
 
 function isAreaItem(item: LayoutItem) {
   return item.height <= 0.1 || item.templateId === "crane" || item.templateId.includes("aisle") || item.templateId === "restricted" || item.templateId === "walkway";
+}
+
+function moveAnnotationBy(annotation: AnnotationItem, dx: number, dy: number, maxX: number, maxY: number) {
+  const minX = Math.min(annotation.x1, annotation.x2);
+  const maxAnnotationX = Math.max(annotation.x1, annotation.x2);
+  const minY = Math.min(annotation.y1, annotation.y2);
+  const maxAnnotationY = Math.max(annotation.y1, annotation.y2);
+  const clampedDx = clamp(dx, -minX, maxX - maxAnnotationX);
+  const clampedDy = clamp(dy, -minY, maxY - maxAnnotationY);
+  return {
+    ...annotation,
+    x1: Number((annotation.x1 + clampedDx).toFixed(3)),
+    y1: Number((annotation.y1 + clampedDy).toFixed(3)),
+    x2: Number((annotation.x2 + clampedDx).toFixed(3)),
+    y2: Number((annotation.y2 + clampedDy).toFixed(3))
+  };
 }
 
 function clamp(value: number, min: number, max: number) {
