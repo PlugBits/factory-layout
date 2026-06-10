@@ -1,6 +1,6 @@
-import { Trash2 } from "lucide-react";
-import { annotationColors, arrowShapeOptions } from "./AnnotationLayer";
-import type { AnnotationItem, ArrowShape } from "../types";
+import { Info, MessageSquare, Trash2, TriangleAlert } from "lucide-react";
+import { annotationColors, arrowShapeOptions, noteIconOptions } from "./AnnotationLayer";
+import type { AnnotationItem, ArrowShape, NoteIcon } from "../types";
 
 type AnnotationPropertiesProps = {
   annotation: AnnotationItem;
@@ -23,13 +23,35 @@ export function AnnotationProperties({ annotation, onUpdate, onDelete }: Annotat
           </select>
         </label>
       ) : (
-        <label>Body
-          <textarea
-            rows={4}
-            value={annotation.body ?? ""}
-            onChange={(event) => onUpdate(annotation.id, { body: event.target.value })}
-          />
-        </label>
+        <>
+          <div className="annotation-color-block">
+            <div className="field-title">Icon</div>
+            <div className="note-icon-grid">
+              {noteIconOptions.map((option) => {
+                const Icon = option.value === "info" ? Info : option.value === "warning" ? TriangleAlert : MessageSquare;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={(annotation.noteIcon ?? "note") === option.value ? "note-icon-button active" : "note-icon-button"}
+                    title={option.label}
+                    onClick={() => onUpdate(annotation.id, { noteIcon: option.value as NoteIcon })}
+                  >
+                    <Icon size={16} />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <label>Body
+            <textarea
+              rows={4}
+              value={annotation.body ?? ""}
+              onChange={(event) => onUpdate(annotation.id, { body: event.target.value })}
+            />
+          </label>
+        </>
       )}
       <div className="annotation-color-block">
         <div className="field-title">Color</div>

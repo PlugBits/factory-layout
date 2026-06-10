@@ -20,7 +20,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -133,13 +134,19 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   min-height: 30px;
   border: 1px solid #c7d0df;
   border-radius: 4px;
   background: #fff;
   padding: 4px 7px;
+}
+
+textarea {
+  resize: vertical;
+  line-height: 1.45;
 }
 
 .template-list {
@@ -262,6 +269,29 @@ select {
 
 .annotation-color-block {
   margin-top: 2px;
+}
+
+.note-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+
+.note-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-radius: 5px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.note-icon-button.active {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
 .annotation-color-grid {

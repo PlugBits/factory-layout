@@ -282,6 +282,7 @@ function App() {
         kind: "note",
         label: "Note",
         body: "",
+        noteIcon: "note",
         x1: x,
         y1: y,
         x2: x,
@@ -1438,6 +1439,8 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
       }
       const mountRect = mount.getBoundingClientRect();
       noteTooltip.textContent = body;
+      noteTooltip.style.borderColor = (hit?.userData.color as string | undefined) ?? "#cad3df";
+      noteTooltip.style.color = (hit?.userData.color as string | undefined) ?? "#172033";
       noteTooltip.style.left = `${event.clientX - mountRect.left + 12}px`;
       noteTooltip.style.top = `${event.clientY - mountRect.top + 12}px`;
       noteTooltip.style.display = "block";
@@ -1928,6 +1931,7 @@ function createAnnotationNoteLabel(annotation: AnnotationItem) {
   sprite.scale.set(spriteW, spriteH, 1);
   sprite.renderOrder = 1;
   sprite.userData.body = annotation.body ?? "";
+  sprite.userData.color = annotation.color;
   return sprite;
 }
 
@@ -1947,14 +1951,7 @@ function createAnnotationNoteTexture(annotation: AnnotationItem) {
   ctx.lineWidth = 10;
   ctx.stroke();
 
-  ctx.fillStyle = color;
-  roundRect(ctx, 58, 126, 92, 68, 16);
-  ctx.fill();
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 48px Arial, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("N", 104, 160);
+  drawAnnotationNoteIcon(ctx, annotation.noteIcon ?? "note", color, 104, 160);
 
   ctx.fillStyle = "#0f172a";
   ctx.textAlign = "left";
@@ -1971,6 +1968,44 @@ function createAnnotationNoteTexture(annotation: AnnotationItem) {
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
   return texture;
+}
+
+function drawAnnotationNoteIcon(ctx: CanvasRenderingContext2D, icon: NonNullable<AnnotationItem["noteIcon"]>, color: string, cx: number, cy: number) {
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 10;
+  ctx.lineJoin = "round";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  if (icon === "warning") {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 48);
+    ctx.lineTo(cx + 52, cy + 42);
+    ctx.lineTo(cx - 52, cy + 42);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 58px Arial, sans-serif";
+    ctx.fillText("!", cx, cy + 10);
+    return;
+  }
+
+  if (icon === "info") {
+    ctx.beginPath();
+    ctx.arc(cx, cy, 48, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 72px Arial, sans-serif";
+    ctx.fillText("i", cx, cy + 2);
+    return;
+  }
+
+  roundRect(ctx, cx - 50, cy - 38, 100, 76, 16);
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 46px Arial, sans-serif";
+  ctx.fillText("N", cx, cy);
 }
 
 function getAnnotationArrowPoints(annotation: AnnotationItem) {

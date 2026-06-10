@@ -1,5 +1,5 @@
-import { CornerDownRight, Eye, EyeOff, MessageSquare, MoveRight, Trash2 } from "lucide-react";
-import type { AnnotationItem, AnnotationKind, ArrowShape } from "../types";
+import { CornerDownRight, Eye, EyeOff, Info, MessageSquare, MoveRight, Trash2, TriangleAlert } from "lucide-react";
+import type { AnnotationItem, AnnotationKind, ArrowShape, NoteIcon } from "../types";
 
 type AnnotationLayerProps = {
   annotations: AnnotationItem[];
@@ -34,6 +34,12 @@ export const arrowShapeOptions: Array<{ label: string; value: ArrowShape }> = [
   { label: "Elbow", value: "elbow" },
   { label: "Left turn", value: "left-turn" },
   { label: "Right turn", value: "right-turn" }
+];
+
+export const noteIconOptions: Array<{ label: string; value: NoteIcon }> = [
+  { label: "Note", value: "note" },
+  { label: "Info", value: "info" },
+  { label: "Warning", value: "warning" }
 ];
 
 export function AnnotationLayer({
@@ -140,7 +146,7 @@ export function AnnotationLayer({
             }}
             onClick={() => onSelect(annotation.id)}
           >
-            {annotation.kind === "arrow" ? <MoveRight size={14} /> : <MessageSquare size={14} />}
+            {annotation.kind === "arrow" ? <MoveRight size={14} /> : <NoteIconView icon={annotation.noteIcon} size={14} />}
             {annotation.kind === "note" || annotation.label.trim() ? <span>{annotation.label}</span> : null}
             {annotation.id === selectedId ? (
               <span
@@ -248,7 +254,7 @@ export function AnnotationPanel({
             onClick={() => onSelect(annotation.id)}
           >
             {annotation.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-            {annotation.kind === "arrow" ? <CornerDownRight size={14} /> : <MessageSquare size={14} />}
+            {annotation.kind === "arrow" ? <CornerDownRight size={14} /> : <NoteIconView icon={annotation.noteIcon} size={14} />}
             <span>{annotation.label}</span>
           </button>
         )) : (
@@ -257,6 +263,12 @@ export function AnnotationPanel({
       </div>
     </section>
   );
+}
+
+function NoteIconView({ icon, size }: { icon?: NoteIcon; size: number }) {
+  if (icon === "info") return <Info size={size} />;
+  if (icon === "warning") return <TriangleAlert size={size} />;
+  return <MessageSquare size={size} />;
 }
 
 function getAnnotationLabelPoint(annotation: AnnotationItem) {

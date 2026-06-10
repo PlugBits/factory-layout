@@ -7,12 +7,14 @@ export type Waypoint = { id: string; x: number; y: number };
 
 export type AnnotationKind = "arrow" | "note";
 export type ArrowShape = "straight" | "elbow" | "left-turn" | "right-turn";
+export type NoteIcon = "note" | "info" | "warning";
 
 export type AnnotationItem = {
   id: string;
   kind: AnnotationKind;
   label: string;
   body?: string;
+  noteIcon?: NoteIcon;
   x1: number;
   y1: number;
   x2: number;
