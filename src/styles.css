@@ -580,7 +580,12 @@ select {
   pointer-events: none;
 }
 
+.three-annotation-note-shell {
+  pointer-events: auto;
+}
+
 .three-annotation-note {
+  --note-scale: 1;
   display: inline-grid;
   gap: 2px;
   max-width: 180px;
@@ -592,7 +597,8 @@ select {
   line-height: 1.25;
   padding: 4px 7px;
   pointer-events: auto;
-  transform: translate(-50%, -100%);
+  transform: translate(-50%, -100%) scale(var(--note-scale));
+  transform-origin: 50% 100%;
   white-space: nowrap;
 }
 

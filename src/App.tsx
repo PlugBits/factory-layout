@@ -1776,19 +1776,25 @@ function createEquipmentModel(item: LayoutItem) {
 
 function createAnnotationArrowModel(annotation: AnnotationItem) {
   const group = new THREE.Group();
-  const color = new THREE.Color(annotation.color);
-  const material = new THREE.MeshBasicMaterial({
-    color,
+  const baseColor = new THREE.Color(annotation.color);
+  const fillColor = baseColor.clone().lerp(new THREE.Color("#ffffff"), 0.34);
+  const edgeColor = baseColor.clone().multiplyScalar(0.62);
+  const material = new THREE.MeshLambertMaterial({
+    color: fillColor,
     transparent: true,
-    opacity: 0.9,
-    side: THREE.DoubleSide,
-    depthWrite: false
+    opacity: 0.82
+  });
+  const edgeMaterial = new THREE.LineBasicMaterial({
+    color: edgeColor,
+    transparent: true,
+    opacity: 0.68
   });
   const points = getAnnotationArrowPoints(annotation);
   const shaftWidth = 0.42;
   const headLength = 1.05;
   const headWidth = 1.1;
-  const y = 0.3;
+  const y = 0.7;
+  const thickness = 0.12;
 
   for (let index = 0; index < points.length - 1; index += 1) {
     const start = points[index];
@@ -1805,10 +1811,10 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
         x: end.x - (dx / length) * trim,
         y: end.y - (dz / length) * trim
       };
-      group.add(createFlatArrowShaft(start, shaftEnd, shaftWidth, y, material));
-      group.add(createFlatArrowHead(start, end, headLength, headWidth, y + 0.004, material));
+      group.add(createExtrudedArrowShaft(start, shaftEnd, shaftWidth, y, thickness, material, edgeMaterial));
+      group.add(createExtrudedArrowHead(start, end, headLength, headWidth, y + thickness * 0.08, thickness, material, edgeMaterial));
     } else {
-      group.add(createFlatArrowShaft(start, end, shaftWidth, y, material));
+      group.add(createExtrudedArrowShaft(start, end, shaftWidth, y, thickness, material, edgeMaterial));
     }
   }
 
@@ -1833,7 +1839,15 @@ function updateAnnotationLabelOcclusion(camera: THREE.Camera, raycaster: THREE.R
     raycaster.far = Math.max(0.05, distance - 0.08);
     const blocked = raycaster.intersectObjects(occluderMeshes, false).length > 0;
     label.element.style.visibility = blocked ? "hidden" : "visible";
+    updateAnnotationLabelScale(label, distance);
   }
+}
+
+function updateAnnotationLabelScale(label: CSS2DObject, distance: number) {
+  const content = label.element.firstElementChild;
+  if (!(content instanceof HTMLElement)) return;
+  const scale = THREE.MathUtils.clamp(10 / Math.max(distance, 1), 0.34, 1.0);
+  content.style.setProperty("--note-scale", scale.toFixed(3));
 }
 
 function getRaycastableMeshes(objects: THREE.Object3D[]) {
@@ -1848,12 +1862,12 @@ function getRaycastableMeshes(objects: THREE.Object3D[]) {
   return meshes;
 }
 
-function createFlatArrowShaft(start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, material: THREE.Material) {
+function createExtrudedArrowShaft(start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, thickness: number, material: THREE.Material, edgeMaterial: THREE.Material) {
   const polygon = makeSegmentPolygon(start, end, width);
-  return createFlatPolygonMesh(polygon, y, material);
+  return createExtrudedPolygonModel(polygon, y, thickness, material, edgeMaterial);
 }
 
-function createFlatArrowHead(start: { x: number; y: number }, end: { x: number; y: number }, length: number, width: number, y: number, material: THREE.Material) {
+function createExtrudedArrowHead(start: { x: number; y: number }, end: { x: number; y: number }, length: number, width: number, y: number, thickness: number, material: THREE.Material, edgeMaterial: THREE.Material) {
   const dx = end.x - start.x;
   const dz = end.y - start.y;
   const segmentLength = Math.hypot(dx, dz) || 1;
@@ -1868,7 +1882,7 @@ function createFlatArrowHead(start: { x: number; y: number }, end: { x: number; 
     { x: base.x + px * width / 2, y: base.y + pz * width / 2 },
     { x: base.x - px * width / 2, y: base.y - pz * width / 2 }
   ];
-  return createFlatPolygonMesh(polygon, y, material);
+  return createExtrudedPolygonModel(polygon, y, thickness, material, edgeMaterial);
 }
 
 function makeSegmentPolygon(start: { x: number; y: number }, end: { x: number; y: number }, width: number) {
@@ -1885,7 +1899,7 @@ function makeSegmentPolygon(start: { x: number; y: number }, end: { x: number; y
   ];
 }
 
-function createFlatPolygonMesh(points: Array<{ x: number; y: number }>, y: number, material: THREE.Material) {
+function createExtrudedPolygonModel(points: Array<{ x: number; y: number }>, y: number, thickness: number, material: THREE.Material, edgeMaterial: THREE.Material) {
   const shape = new THREE.Shape();
   points.forEach((point, index) => {
     if (index === 0) shape.moveTo(point.x, point.y);
@@ -1893,13 +1907,31 @@ function createFlatPolygonMesh(points: Array<{ x: number; y: number }>, y: numbe
   });
   shape.closePath();
 
-  const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), material);
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: thickness,
+    bevelEnabled: false,
+    curveSegments: 1
+  });
+  geometry.translate(0, 0, -thickness / 2);
+
+  const group = new THREE.Group();
+  const mesh = new THREE.Mesh(geometry, material);
   mesh.rotation.x = Math.PI / 2;
   mesh.position.y = y;
-  return mesh;
+  group.add(mesh);
+
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMaterial);
+  edges.rotation.copy(mesh.rotation);
+  edges.position.copy(mesh.position);
+  group.add(edges);
+
+  return group;
 }
 
 function createAnnotationNoteLabel(annotation: AnnotationItem) {
+  const shell = document.createElement("div");
+  shell.className = "three-annotation-note-shell";
+
   const div = document.createElement("div");
   div.className = "three-annotation-note";
   div.style.borderColor = annotation.color;
@@ -1912,8 +1944,9 @@ function createAnnotationNoteLabel(annotation: AnnotationItem) {
   const detail = document.createElement("span");
   detail.textContent = annotation.label || "Note";
   div.appendChild(detail);
+  shell.appendChild(div);
 
-  return new CSS2DObject(div);
+  return new CSS2DObject(shell);
 }
 
 function getAnnotationArrowPoints(annotation: AnnotationItem) {
