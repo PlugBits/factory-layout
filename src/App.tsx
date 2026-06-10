@@ -1769,42 +1769,92 @@ function createEquipmentModel(item: LayoutItem) {
 function createAnnotationArrowModel(annotation: AnnotationItem) {
   const group = new THREE.Group();
   const color = new THREE.Color(annotation.color);
-  const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 });
-  const points = getAnnotationArrowPoints(annotation).map((point) => new THREE.Vector3(point.x, 0.12, point.y));
-  const shaftRadius = 0.08;
-  const headLength = 0.55;
-  const headRadius = 0.24;
+  const material = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.9,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+  const points = getAnnotationArrowPoints(annotation);
+  const shaftWidth = 0.42;
+  const headLength = 1.05;
+  const headWidth = 1.1;
+  const y = 0.13;
 
   for (let index = 0; index < points.length - 1; index += 1) {
     const start = points[index];
     const end = points[index + 1];
     const isLast = index === points.length - 2;
-    const direction = end.clone().sub(start);
-    const length = direction.length();
+    const dx = end.x - start.x;
+    const dz = end.y - start.y;
+    const length = Math.hypot(dx, dz);
     if (length < 0.05) continue;
-    direction.normalize();
-    const shaftEnd = isLast && length > headLength ? end.clone().sub(direction.clone().multiplyScalar(headLength * 0.7)) : end;
-    const shaft = createCylinderBetween(start, shaftEnd, shaftRadius, material);
-    group.add(shaft);
 
     if (isLast) {
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(headRadius, headLength, 4), material);
-      cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
-      cone.position.copy(end.clone().sub(direction.clone().multiplyScalar(headLength / 2)));
-      cone.rotation.z += Math.PI / 4;
-      group.add(cone);
+      const trim = Math.min(headLength * 0.72, length * 0.55);
+      const shaftEnd = {
+        x: end.x - (dx / length) * trim,
+        y: end.y - (dz / length) * trim
+      };
+      group.add(createFlatArrowShaft(start, shaftEnd, shaftWidth, y, material));
+      group.add(createFlatArrowHead(start, end, headLength, headWidth, y + 0.004, material));
+    } else {
+      group.add(createFlatArrowShaft(start, end, shaftWidth, y, material));
     }
   }
 
   return group;
 }
 
-function createCylinderBetween(start: THREE.Vector3, end: THREE.Vector3, radius: number, material: THREE.Material) {
-  const direction = end.clone().sub(start);
-  const length = direction.length();
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, Math.max(length, 0.01), 8), material);
-  mesh.position.copy(start.clone().add(end).multiplyScalar(0.5));
-  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+function createFlatArrowShaft(start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, material: THREE.Material) {
+  const polygon = makeSegmentPolygon(start, end, width);
+  return createFlatPolygonMesh(polygon, y, material);
+}
+
+function createFlatArrowHead(start: { x: number; y: number }, end: { x: number; y: number }, length: number, width: number, y: number, material: THREE.Material) {
+  const dx = end.x - start.x;
+  const dz = end.y - start.y;
+  const segmentLength = Math.hypot(dx, dz) || 1;
+  const ux = dx / segmentLength;
+  const uz = dz / segmentLength;
+  const px = -uz;
+  const pz = ux;
+  const actualLength = Math.min(length, Math.max(0.35, segmentLength * 0.75));
+  const base = { x: end.x - ux * actualLength, y: end.y - uz * actualLength };
+  const polygon = [
+    end,
+    { x: base.x + px * width / 2, y: base.y + pz * width / 2 },
+    { x: base.x - px * width / 2, y: base.y - pz * width / 2 }
+  ];
+  return createFlatPolygonMesh(polygon, y, material);
+}
+
+function makeSegmentPolygon(start: { x: number; y: number }, end: { x: number; y: number }, width: number) {
+  const dx = end.x - start.x;
+  const dz = end.y - start.y;
+  const length = Math.hypot(dx, dz) || 1;
+  const px = -(dz / length) * width / 2;
+  const pz = (dx / length) * width / 2;
+  return [
+    { x: start.x + px, y: start.y + pz },
+    { x: end.x + px, y: end.y + pz },
+    { x: end.x - px, y: end.y - pz },
+    { x: start.x - px, y: start.y - pz }
+  ];
+}
+
+function createFlatPolygonMesh(points: Array<{ x: number; y: number }>, y: number, material: THREE.Material) {
+  const shape = new THREE.Shape();
+  points.forEach((point, index) => {
+    if (index === 0) shape.moveTo(point.x, point.y);
+    else shape.lineTo(point.x, point.y);
+  });
+  shape.closePath();
+
+  const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = y;
   return mesh;
 }
 
