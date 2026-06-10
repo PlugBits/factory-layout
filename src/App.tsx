@@ -1853,7 +1853,7 @@ function createFlatPolygonMesh(points: Array<{ x: number; y: number }>, y: numbe
   shape.closePath();
 
   const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), material);
-  mesh.rotation.x = -Math.PI / 2;
+  mesh.rotation.x = Math.PI / 2;
   mesh.position.y = y;
   return mesh;
 }
