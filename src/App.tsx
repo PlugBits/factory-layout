@@ -15,53 +15,22 @@ import {
   wallSideLabels,
   type Language
 } from "./i18n";
-
-type Category = "machine" | "logistics" | "work" | "building" | "utility" | "safety";
-type ViewMode = "2d" | "3d";
-type OrbitTargetMode = "factory" | "selected" | "walk";
-type WallSide = "north" | "east" | "south" | "west";
-type EdgePair = "right-left" | "left-right" | "cx-cx" | "bottom-top" | "top-bottom" | "cy-cy";
-type Waypoint = { id: string; x: number; y: number };
-
-type EquipmentTemplate = {
-  id: string;
-  name: string;
-  category: Category;
-  width: number;
-  depth: number;
-  height: number;
-  color: string;
-  icon: string;
-};
-
-type LayoutItem = {
-  id: string;
-  templateId: string;
-  name: string;
-  x: number;
-  y: number;
-  width: number;
-  depth: number;
-  height: number;
-  rotation: 0 | 90 | 180 | 270;
-  color: string;
-  icon: string;
-};
-
-type ProjectFile = {
-  version: 1;
-  factory: {
-    width: number;
-    depth: number;
-    grid: number;
-    majorGrid?: number;
-    walls?: Record<WallSide, boolean>;
-  };
-  items: LayoutItem[];
-  waypoints?: Waypoint[];
-};
-
-type ProjectSnapshot = Pick<ProjectFile, "factory" | "items" | "waypoints">;
+import { AnnotationLayer, AnnotationPanel } from "./components/AnnotationLayer";
+import { LayoutItemView } from "./components/LayoutItemView";
+import type {
+  AnnotationItem,
+  AnnotationKind,
+  Category,
+  EdgePair,
+  EquipmentTemplate,
+  LayoutItem,
+  OrbitTargetMode,
+  ProjectFile,
+  ProjectSnapshot,
+  ViewMode,
+  WallSide,
+  Waypoint
+} from "./types";
 
 const templates: EquipmentTemplate[] = [
   { id: "machining", name: "マシニングセンタ", category: "machine", width: 2.6, depth: 2.2, height: 2.5, color: "#4f83cc", icon: "MC" },
@@ -178,6 +147,10 @@ function App() {
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0].id);
   const [items, setItems] = useState<LayoutItem[]>(() => draftProject?.items ?? []);
   const [waypoints, setWaypoints] = useState<Waypoint[]>(() => draftProject?.waypoints ?? []);
+  const [annotations, setAnnotations] = useState<AnnotationItem[]>(() => draftProject?.annotations ?? []);
+  const [annotationLayerVisible, setAnnotationLayerVisible] = useState(() => draftProject?.annotationLayerVisible ?? true);
+  const [annotationTool, setAnnotationTool] = useState<AnnotationKind | null>(null);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<ProjectSnapshot[]>([]);
   const [redoStack, setRedoStack] = useState<ProjectSnapshot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -207,6 +180,7 @@ function App() {
   const [twoPointTargetGap, setTwoPointTargetGap] = useState(0);
   const [edgePair, setEdgePair] = useState<EdgePair>("right-left");
   const dragStartSnapshotRef = useRef<ProjectSnapshot | null>(null);
+  const annotationArrowStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const basePxPerMeter = useMemo(() => Math.max(22, Math.min(52, 960 / factory.width)), [factory.width]);
   const pxPerMeter = basePxPerMeter * zoom;
@@ -214,6 +188,7 @@ function App() {
   const secondItem = items.find((item) => item.id === secondSelectedId) ?? null;
   const sizeEditItem = items.find((item) => item.id === sizeEditId) ?? null;
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0];
+  const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null;
   const text = (key: Parameters<typeof t>[1]) => t(language, key);
   const displayItemName = (item: LayoutItem) => getItemDisplayName(language, item.templateId, item.name);
   const selectedDisplayName = selectedItem ? displayItemName(selectedItem) : "";
@@ -230,16 +205,21 @@ function App() {
   const makeProjectSnapshot = (): ProjectSnapshot => ({
     factory: makeFactory(factory),
     items: items.map((item) => ({ ...item })),
-    waypoints: waypoints.map((waypoint) => ({ ...waypoint }))
+    waypoints: waypoints.map((waypoint) => ({ ...waypoint })),
+    annotations: annotations.map((annotation) => ({ ...annotation })),
+    annotationLayerVisible
   });
 
   const applyProjectSnapshot = (snapshot: ProjectSnapshot) => {
     setFactory(makeFactory(snapshot.factory));
     setItems(snapshot.items.map((item) => ({ ...item })));
     setWaypoints((snapshot.waypoints ?? []).map((waypoint) => ({ ...waypoint })));
+    setAnnotations((snapshot.annotations ?? []).map((annotation) => ({ ...annotation })));
+    setAnnotationLayerVisible(snapshot.annotationLayerVisible ?? true);
     setSelectedId(null);
     setSecondSelectedId(null);
     setSizeEditId(null);
+    setSelectedAnnotationId(null);
     setDrag(null);
   };
 
@@ -275,6 +255,80 @@ function App() {
   const updateWaypoints = (updater: (current: Waypoint[]) => Waypoint[]) => {
     recordHistory();
     setWaypoints((current) => updater(current));
+  };
+
+  const updateAnnotations = (updater: (current: AnnotationItem[]) => AnnotationItem[]) => {
+    recordHistory();
+    setAnnotations((current) => updater(current));
+  };
+
+  const toggleAnnotationLayer = () => {
+    recordHistory();
+    setAnnotationLayerVisible((current) => !current);
+  };
+
+  const addAnnotationNote = (rawX: number, rawY: number) => {
+    const x = snap(clamp(rawX, 0, factory.width), factory.grid);
+    const y = snap(clamp(rawY, 0, factory.depth), factory.grid);
+    const id = makeId("note");
+    recordHistory();
+    setAnnotations((current) => [
+      ...current,
+      {
+        id,
+        kind: "note",
+        label: "Note",
+        x1: x,
+        y1: y,
+        x2: x,
+        y2: y,
+        color: "#0f766e",
+        visible: true
+      }
+    ]);
+    setSelectedAnnotationId(id);
+  };
+
+  const startAnnotationArrow = (rawX: number, rawY: number) => {
+    annotationArrowStartRef.current = {
+      x: snap(clamp(rawX, 0, factory.width), factory.grid),
+      y: snap(clamp(rawY, 0, factory.depth), factory.grid)
+    };
+  };
+
+  const finishAnnotationArrow = (rawX: number, rawY: number) => {
+    const start = annotationArrowStartRef.current;
+    annotationArrowStartRef.current = null;
+    if (!start) return;
+    const x2 = snap(clamp(rawX, 0, factory.width), factory.grid);
+    const y2 = snap(clamp(rawY, 0, factory.depth), factory.grid);
+    if (Math.abs(x2 - start.x) < 0.001 && Math.abs(y2 - start.y) < 0.001) return;
+    const id = makeId("arrow");
+    recordHistory();
+    setAnnotations((current) => [
+      ...current,
+      {
+        id,
+        kind: "arrow",
+        label: "Flow",
+        x1: start.x,
+        y1: start.y,
+        x2,
+        y2,
+        color: "#dc2626",
+        visible: true
+      }
+    ]);
+    setSelectedAnnotationId(id);
+  };
+
+  const updateAnnotation = (id: string, patch: Partial<AnnotationItem>) => {
+    updateAnnotations((current) => current.map((annotation) => annotation.id === id ? { ...annotation, ...patch } : annotation));
+  };
+
+  const deleteAnnotation = (id: string) => {
+    updateAnnotations((current) => current.filter((annotation) => annotation.id !== id));
+    if (selectedAnnotationId === id) setSelectedAnnotationId(null);
   };
 
   // 選択中のedgePairで計算した現在の実際の間隔（リアルタイム更新）
@@ -370,7 +424,7 @@ function App() {
 
     window.addEventListener("keydown", keyDown);
     return () => window.removeEventListener("keydown", keyDown);
-  }, [redoStack, undoStack, factory, items, waypoints]);
+  }, [redoStack, undoStack, factory, items, waypoints, annotations, annotationLayerVisible]);
 
   useEffect(() => {
     setSecondSelectedId(null);
@@ -394,13 +448,13 @@ function App() {
   }, [selectedId]);
 
   useEffect(() => {
-    const project: ProjectFile = { version: 1, factory, items, waypoints };
+    const project: ProjectFile = { version: 1, factory, items, waypoints, annotations, annotationLayerVisible };
     try {
       window.localStorage.setItem(draftStorageKey, JSON.stringify(project));
     } catch {
       // Autosave is best-effort; JSON export still works when storage is unavailable.
     }
-  }, [factory, items, waypoints]);
+  }, [factory, items, waypoints, annotations, annotationLayerVisible]);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -552,7 +606,7 @@ function App() {
   };
 
   const saveJson = () => {
-    const project: ProjectFile = { version: 1, factory, items, waypoints };
+    const project: ProjectFile = { version: 1, factory, items, waypoints, annotations, annotationLayerVisible };
     downloadBlob(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" }), "factory-layout.json");
   };
 
@@ -567,7 +621,10 @@ function App() {
     setFactory(makeFactory(project.factory));
     setItems(project.items);
     setWaypoints(project.waypoints ?? []);
+    setAnnotations(project.annotations ?? []);
+    setAnnotationLayerVisible(project.annotationLayerVisible ?? true);
     setSelectedId(null);
+    setSelectedAnnotationId(null);
   };
 
   const exportPng = async () => {
@@ -591,6 +648,21 @@ function App() {
           <button className={viewMode === "2d" ? "active" : ""} onClick={() => setViewMode("2d")}><Grid2X2 size={16} />2D</button>
           <button className={viewMode === "3d" ? "active" : ""} onClick={() => setViewMode("3d")}><Eye size={16} />3D</button>
         </div>
+
+        <AnnotationPanel
+          annotations={annotations}
+          layerVisible={annotationLayerVisible}
+          activeTool={annotationTool}
+          selectedAnnotation={selectedAnnotation}
+          onToggleLayer={toggleAnnotationLayer}
+          onSetTool={(tool) => {
+            setWaypointMode(false);
+            setAnnotationTool(tool);
+          }}
+          onSelect={setSelectedAnnotationId}
+          onUpdate={updateAnnotation}
+          onDelete={deleteAnnotation}
+        />
 
         <details className="panel factory-panel">
           <summary>{text("factorySize")}</summary>
@@ -640,7 +712,10 @@ function App() {
           {viewMode === "2d" ? (
             <button
               className={waypointMode ? "active view-button" : "view-button"}
-              onClick={() => setWaypointMode((v) => !v)}
+              onClick={() => {
+                setAnnotationTool(null);
+                setWaypointMode((v) => !v);
+              }}
               title={text("routeSettingTitle")}
             >
               📍 {text("routeSetting")}
@@ -736,6 +811,18 @@ function App() {
                   </div>
                 ))}
                 {/* ルート設定オーバーレイ: アイテム含む全体をカバーしてクリックを横取り */}
+                <AnnotationLayer
+                  annotations={annotations}
+                  visible={annotationLayerVisible}
+                  activeTool={annotationTool}
+                  pxPerMeter={pxPerMeter}
+                  selectedId={selectedAnnotationId}
+                  onStartArrow={startAnnotationArrow}
+                  onFinishArrow={finishAnnotationArrow}
+                  onAddNote={addAnnotationNote}
+                  onSelect={setSelectedAnnotationId}
+                  onDelete={deleteAnnotation}
+                />
                 {waypointMode && (
                   <div
                     style={{ position: "absolute", inset: 0, zIndex: 50, cursor: "crosshair" }}
@@ -946,38 +1033,6 @@ function App() {
           </div>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function LayoutItemView({ item, selected, secondSelected, area, pxPerMeter, displayName, onPointerDown, onDoubleClick }: {
-  item: LayoutItem;
-  selected: boolean;
-  secondSelected: boolean;
-  area: boolean;
-  pxPerMeter: number;
-  displayName: string;
-  onPointerDown: (event: React.PointerEvent) => void;
-  onDoubleClick: () => void;
-}) {
-  return (
-    <div
-      className={`layout-item${selected ? " selected" : ""}${secondSelected ? " second-selected" : ""}${area ? " area-item" : ""}`}
-      style={{
-        left: item.x * pxPerMeter,
-        top: item.y * pxPerMeter,
-        width: item.width * pxPerMeter,
-        height: item.depth * pxPerMeter,
-        backgroundColor: item.color,
-        transform: `rotate(${item.rotation}deg)`,
-        zIndex: area ? 1 : 5
-      }}
-      onPointerDown={onPointerDown}
-      onDoubleClick={onDoubleClick}
-    >
-      <div className="item-icon">{item.icon}</div>
-      <div className="item-name">{displayName}</div>
-      <div className="item-size">{item.width} x {item.depth} x {item.height}m</div>
     </div>
   );
 }
