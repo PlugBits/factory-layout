@@ -442,8 +442,9 @@ function App() {
   };
 
   const moveItemTo = (item: LayoutItem, rawX: number, rawY: number, record = true) => {
-    const x = snap(Math.max(0, Math.min(factory.width - item.width, rawX)), factory.grid);
-    const y = snap(Math.max(0, Math.min(factory.depth - item.depth, rawY)), factory.grid);
+    const bounds = getItemPositionBounds(item, factory);
+    const x = snap(clamp(rawX, bounds.minX, bounds.maxX), factory.grid);
+    const y = snap(clamp(rawY, bounds.minY, bounds.maxY), factory.grid);
     updateItem(item.id, { x, y }, record);
   };
 
@@ -1753,6 +1754,22 @@ function isWalkKey(code: string) {
   return ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight", "ShiftLeft", "ShiftRight"].includes(code);
 }
 
+function getItemPositionBounds(item: LayoutItem, factory: ProjectFile["factory"]) {
+  const rotated = item.rotation === 90 || item.rotation === 270;
+  const displayWidth = rotated ? item.depth : item.width;
+  const displayDepth = rotated ? item.width : item.depth;
+  const minX = displayWidth / 2 - item.width / 2;
+  const minY = displayDepth / 2 - item.depth / 2;
+  const maxX = factory.width - item.width / 2 - displayWidth / 2;
+  const maxY = factory.depth - item.depth / 2 - displayDepth / 2;
+  return {
+    minX: Math.min(minX, maxX),
+    maxX: Math.max(minX, maxX),
+    minY: Math.min(minY, maxY),
+    maxY: Math.max(minY, maxY)
+  };
+}
+
 function collectAnnotationHoverTargets(root: THREE.Object3D, targets: THREE.Object3D[]) {
   root.traverse((object) => {
     if (typeof object.userData.body === "string") targets.push(object);
@@ -1921,9 +1938,7 @@ function createEquipmentModel(item: LayoutItem) {
     addForkliftRouteSigns(group, item, w, d, visibleHeight);
   }
 
-  if (!hasRouteSigns) {
-    addTopIcon(group, item, w, d, visibleHeight);
-  }
+  addTopIcon(group, item, w, d, visibleHeight);
 
   if (id === "crane") {
     addFrame(group, w, d, h);
