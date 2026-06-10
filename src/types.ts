@@ -56,6 +56,7 @@ export type LayoutItem = {
   icon: string;
   trafficDirection?: TrafficDirection;
   floorLabel?: string;
+  routeSignColor?: string;
   showFloorSigns?: boolean;
 };
 

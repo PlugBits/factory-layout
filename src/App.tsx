@@ -1109,6 +1109,20 @@ function App() {
                             onChange={(event) => updateItem(selectedItem.id, { floorLabel: event.target.value })}
                           />
                         </label>
+                        <div className="color-panel compact">
+                          <div className="field-title">Arrow color</div>
+                          <div className="color-grid">
+                            {itemColorPalette.map((color) => (
+                              <button
+                                key={color}
+                                className={(selectedItem.routeSignColor ?? "#0f766e").toLowerCase() === color.toLowerCase() ? "color-swatch active" : "color-swatch"}
+                                style={{ backgroundColor: color }}
+                                onClick={() => updateItem(selectedItem.id, { routeSignColor: color })}
+                                aria-label={`Arrow color ${color}`}
+                              />
+                            ))}
+                          </div>
+                        </div>
                         <label className="inline-toggle">
                           <input
                             type="checkbox"
@@ -1902,11 +1916,14 @@ function createEquipmentModel(item: LayoutItem) {
   edge.position.copy(body.position);
   group.add(edge);
 
-  if (id === "forklift-aisle") {
+  const hasRouteSigns = hasForkliftRouteSigns(item);
+  if (hasRouteSigns) {
     addForkliftRouteSigns(group, item, w, d, visibleHeight);
   }
 
-  addTopIcon(group, item, w, d, visibleHeight);
+  if (!hasRouteSigns) {
+    addTopIcon(group, item, w, d, visibleHeight);
+  }
 
   if (id === "crane") {
     addFrame(group, w, d, h);
@@ -1919,11 +1936,15 @@ function createEquipmentModel(item: LayoutItem) {
   return group;
 }
 
+function hasForkliftRouteSigns(item: LayoutItem) {
+  return item.templateId === "forklift-aisle" && item.showFloorSigns !== false && (item.trafficDirection ?? "none") !== "none";
+}
+
 function addForkliftRouteSigns(group: THREE.Group, item: LayoutItem, width: number, depth: number, height: number) {
   const direction = item.trafficDirection ?? "none";
   if (direction === "none" || item.showFloorSigns === false) return;
 
-  const baseColor = new THREE.Color(item.color);
+  const baseColor = new THREE.Color(item.routeSignColor ?? "#0f766e");
   const signColor = baseColor.clone().multiplyScalar(0.62);
   const fillMaterial = new THREE.MeshBasicMaterial({
     color: signColor.clone().lerp(new THREE.Color("#ffffff"), 0.18),
@@ -1982,7 +2003,7 @@ function addForkliftRouteSigns(group: THREE.Group, item: LayoutItem, width: numb
 
   const labelText = (item.floorLabel ?? (direction === "two-way" ? "TWO WAY" : "ONE WAY")).trim();
   if (labelText) {
-    const label = createFloorRouteLabel(labelText, item.color);
+    const label = createFloorRouteLabel(labelText, item.routeSignColor ?? "#0f766e");
     label.position.set(0, y + 0.012, direction === "two-way" ? 0 : -depth * 0.22);
     label.rotation.x = -Math.PI / 2;
     label.rotation.z = direction === "reverse" ? Math.PI : 0;
