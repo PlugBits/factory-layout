@@ -789,15 +789,19 @@ select {
   pointer-events: none;
 }
 
-.annotation-svg path {
+.annotation-arrow-shaft {
   fill: none;
-  stroke-width: 8;
+  stroke-width: 10;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.annotation-svg path.annotation-selected {
-  stroke-width: 10;
+.annotation-selected .annotation-arrow-shaft {
+  stroke-width: 12;
+}
+
+.annotation-arrow-head {
+  stroke: none;
 }
 
 .annotation-hit {
@@ -836,6 +840,13 @@ select {
   border-width: 2px;
   background: rgba(255, 255, 255, 0.96);
   transform: translate(-50%, -50%);
+}
+
+.annotation-arrow.compact {
+  min-height: 24px;
+  width: 28px;
+  border-radius: 4px;
+  padding: 3px;
 }
 
 .annotation-note {

@@ -88,31 +88,19 @@ export function AnnotationLayer({
       onPointerUp={handlePointerUp}
     >
       <svg className="annotation-svg" aria-hidden="true">
-        <defs>
-          {annotations.map((annotation) => (
-            <marker
-              key={`marker-${annotation.id}`}
-              id={`arrow-head-${annotation.id}`}
-              markerWidth="28"
-              markerHeight="24"
-              refX="24"
-              refY="12"
-              orient="auto"
-              markerUnits="userSpaceOnUse"
-            >
-              <path d="M0,0 L0,24 L28,12 z" fill={annotation.color} />
-            </marker>
-          ))}
-        </defs>
-        {annotations.filter((annotation) => annotation.visible && annotation.kind === "arrow").map((annotation) => (
-          <path
-            key={annotation.id}
-            className={annotation.id === selectedId ? "annotation-selected" : ""}
-            d={getArrowPath(annotation, pxPerMeter)}
-            stroke={annotation.color}
-            markerEnd={`url(#arrow-head-${annotation.id})`}
-          />
-        ))}
+        {annotations.filter((annotation) => annotation.visible && annotation.kind === "arrow").map((annotation) => {
+          const arrowHead = getArrowHeadPoints(annotation, pxPerMeter);
+          return (
+            <g key={annotation.id} className={annotation.id === selectedId ? "annotation-selected" : ""}>
+              <path
+                className="annotation-arrow-shaft"
+                d={getArrowPath(annotation, pxPerMeter, 30)}
+                stroke={annotation.color}
+              />
+              <polygon className="annotation-arrow-head" points={arrowHead} fill={annotation.color} />
+            </g>
+          );
+        })}
       </svg>
       {annotations.filter((annotation) => annotation.visible).map((annotation) => {
         const labelPoint = getAnnotationLabelPoint(annotation);
@@ -120,7 +108,7 @@ export function AnnotationLayer({
           <button
             key={annotation.id}
             type="button"
-            className={`annotation-hit annotation-${annotation.kind}${annotation.id === selectedId ? " selected" : ""}`}
+            className={`annotation-hit annotation-${annotation.kind}${annotation.id === selectedId ? " selected" : ""}${annotation.kind === "arrow" && !annotation.label.trim() ? " compact" : ""}`}
             style={{ left: labelPoint.x * pxPerMeter, top: labelPoint.y * pxPerMeter, color: annotation.color }}
             onPointerDown={(event) => {
               if (event.button !== 0) return;
@@ -153,7 +141,7 @@ export function AnnotationLayer({
             onClick={() => onSelect(annotation.id)}
           >
             {annotation.kind === "arrow" ? <MoveRight size={14} /> : <MessageSquare size={14} />}
-            <span>{annotation.label}</span>
+            {annotation.kind === "note" || annotation.label.trim() ? <span>{annotation.label}</span> : null}
             {annotation.id === selectedId ? (
               <span
                 className="annotation-delete-icon"
@@ -280,15 +268,59 @@ function getAnnotationLabelPoint(annotation: AnnotationItem) {
   return { x: bend.x, y: bend.y };
 }
 
-function getArrowPath(annotation: AnnotationItem, pxPerMeter: number) {
+function getArrowPath(annotation: AnnotationItem, pxPerMeter: number, trimEndPx = 0) {
+  const points = getArrowPoints(annotation, pxPerMeter);
+  const trimmedPoints = trimEndPx > 0 ? trimArrowEnd(points, trimEndPx) : points;
+  return trimmedPoints.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+}
+
+function getArrowHeadPoints(annotation: AnnotationItem, pxPerMeter: number) {
+  const points = getArrowPoints(annotation, pxPerMeter);
+  const end = points[points.length - 1];
+  const previous = points[points.length - 2] ?? points[0];
+  const dx = end.x - previous.x;
+  const dy = end.y - previous.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const ux = dx / length;
+  const uy = dy / length;
+  const px = -uy;
+  const py = ux;
+  const headLength = 34;
+  const headWidth = 30;
+  const baseX = end.x - ux * headLength;
+  const baseY = end.y - uy * headLength;
+  return [
+    `${end.x},${end.y}`,
+    `${baseX + px * headWidth / 2},${baseY + py * headWidth / 2}`,
+    `${baseX - px * headWidth / 2},${baseY - py * headWidth / 2}`
+  ].join(" ");
+}
+
+function getArrowPoints(annotation: AnnotationItem, pxPerMeter: number) {
   const x1 = annotation.x1 * pxPerMeter;
   const y1 = annotation.y1 * pxPerMeter;
   const x2 = annotation.x2 * pxPerMeter;
   const y2 = annotation.y2 * pxPerMeter;
-  if ((annotation.shape ?? "straight") === "straight") return `M ${x1} ${y1} L ${x2} ${y2}`;
+  if ((annotation.shape ?? "straight") === "straight") return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
 
   const bend = getArrowBend(annotation);
-  return `M ${x1} ${y1} L ${bend.x * pxPerMeter} ${bend.y * pxPerMeter} L ${x2} ${y2}`;
+  return [{ x: x1, y: y1 }, { x: bend.x * pxPerMeter, y: bend.y * pxPerMeter }, { x: x2, y: y2 }];
+}
+
+function trimArrowEnd(points: Array<{ x: number; y: number }>, trimPx: number) {
+  const next = points.map((point) => ({ ...point }));
+  if (next.length < 2) return next;
+  const end = next[next.length - 1];
+  const previous = next[next.length - 2];
+  const dx = end.x - previous.x;
+  const dy = end.y - previous.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= trimPx) return next;
+  next[next.length - 1] = {
+    x: end.x - (dx / length) * trimPx,
+    y: end.y - (dy / length) * trimPx
+  };
+  return next;
 }
 
 function getArrowBend(annotation: AnnotationItem) {
