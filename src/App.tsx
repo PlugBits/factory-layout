@@ -295,9 +295,13 @@ function App() {
   };
 
   const startAnnotationArrow = (rawX: number, rawY: number) => {
-    annotationArrowStartRef.current = {
+    const point = snapPointToFlowArea({ x: rawX, y: rawY }, items, factory.grid, factory.width, factory.depth) ?? {
       x: snap(clamp(rawX, 0, factory.width), factory.grid),
       y: snap(clamp(rawY, 0, factory.depth), factory.grid)
+    };
+    annotationArrowStartRef.current = {
+      x: point.x,
+      y: point.y
     };
   };
 
@@ -305,8 +309,12 @@ function App() {
     const start = annotationArrowStartRef.current;
     annotationArrowStartRef.current = null;
     if (!start) return;
-    const x2 = snap(clamp(rawX, 0, factory.width), factory.grid);
-    const y2 = snap(clamp(rawY, 0, factory.depth), factory.grid);
+    const point = snapPointToFlowArea({ x: rawX, y: rawY }, items, factory.grid, factory.width, factory.depth) ?? {
+      x: snap(clamp(rawX, 0, factory.width), factory.grid),
+      y: snap(clamp(rawY, 0, factory.depth), factory.grid)
+    };
+    const x2 = point.x;
+    const y2 = point.y;
     if (Math.abs(x2 - start.x) < 0.001 && Math.abs(y2 - start.y) < 0.001) return;
     const id = makeId("arrow");
     recordHistory();
@@ -325,7 +333,8 @@ function App() {
         shape: "straight",
         flowType: "material",
         flowStyle: "band",
-        showMarkers: true
+        showMarkers: true,
+        snapToPath: true
       }
     ]);
     setSelectedAnnotationId(id);
@@ -364,7 +373,7 @@ function App() {
     if (!annotationDrag || annotationDrag.id !== id) return;
     const next = annotationDrag.mode === "move"
       ? moveAnnotationBy(annotationDrag.original, rawX - annotationDrag.startX, rawY - annotationDrag.startY, factory.width, factory.depth)
-      : moveAnnotationEndpoint(annotationDrag.original, annotationDrag.mode, rawX, rawY, factory.width, factory.depth, factory.grid);
+      : moveAnnotationEndpoint(annotationDrag.original, annotationDrag.mode, rawX, rawY, factory.width, factory.depth, factory.grid, items);
     setAnnotations((current) => current.map((annotation) => annotation.id === id ? next : annotation));
   };
 
@@ -1542,10 +1551,55 @@ function moveAnnotationBy(annotation: AnnotationItem, dx: number, dy: number, ma
   };
 }
 
-function moveAnnotationEndpoint(annotation: AnnotationItem, endpoint: "start" | "end", rawX: number, rawY: number, maxX: number, maxY: number, grid: number) {
-  const x = snap(clamp(rawX, 0, maxX), grid);
-  const y = snap(clamp(rawY, 0, maxY), grid);
+function moveAnnotationEndpoint(annotation: AnnotationItem, endpoint: "start" | "end", rawX: number, rawY: number, maxX: number, maxY: number, grid: number, items: LayoutItem[]) {
+  const snappedToPath = annotation.snapToPath !== false
+    ? snapPointToFlowArea({ x: rawX, y: rawY }, items, grid, maxX, maxY)
+    : null;
+  const x = snappedToPath?.x ?? snap(clamp(rawX, 0, maxX), grid);
+  const y = snappedToPath?.y ?? snap(clamp(rawY, 0, maxY), grid);
   return endpoint === "start" ? { ...annotation, x1: x, y1: y } : { ...annotation, x2: x, y2: y };
+}
+
+function snapPointToFlowArea(point: { x: number; y: number }, items: LayoutItem[], grid: number, maxX: number, maxY: number) {
+  let best: { x: number; y: number; distance: number } | null = null;
+  for (const item of items) {
+    if (!isFlowSnapArea(item)) continue;
+    const bounds = getVisualBounds(item);
+    const margin = Math.max(0.65, grid * 1.5);
+    if (
+      point.x < bounds.left - margin ||
+      point.x > bounds.right + margin ||
+      point.y < bounds.top - margin ||
+      point.y > bounds.bottom + margin
+    ) {
+      continue;
+    }
+
+    const horizontal = bounds.visualWidth >= bounds.visualDepth;
+    const candidate = horizontal
+      ? {
+          x: clamp(point.x, bounds.left, bounds.right),
+          y: bounds.centerY
+        }
+      : {
+          x: bounds.centerX,
+          y: clamp(point.y, bounds.top, bounds.bottom)
+        };
+    const distance = Math.hypot(candidate.x - point.x, candidate.y - point.y);
+    if (!best || distance < best.distance) {
+      best = { x: candidate.x, y: candidate.y, distance };
+    }
+  }
+
+  if (!best) return null;
+  return {
+    x: snap(clamp(best.x, 0, maxX), grid),
+    y: snap(clamp(best.y, 0, maxY), grid)
+  };
+}
+
+function isFlowSnapArea(item: LayoutItem) {
+  return item.templateId === "forklift-aisle" || item.templateId === "walkway";
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -1816,23 +1870,19 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
   const baseColor = new THREE.Color(annotation.color);
   const fillColor = baseColor.clone().lerp(new THREE.Color("#ffffff"), 0.34);
   const edgeColor = baseColor.clone().multiplyScalar(0.62);
-  const material = new THREE.MeshLambertMaterial({
+  const material = new THREE.MeshBasicMaterial({
     color: fillColor,
     transparent: true,
-    opacity: 0.82
-  });
-  const edgeMaterial = new THREE.LineBasicMaterial({
-    color: edgeColor,
-    transparent: true,
-    opacity: 0.68
+    opacity: getFloorSignOpacity(annotation),
+    side: THREE.DoubleSide,
+    depthWrite: false
   });
   const points = getAnnotationArrowPoints(annotation);
   const style = annotation.flowStyle ?? "band";
-  const shaftWidth = style === "markers" ? 0.28 : style === "dashed" ? 0.46 : 0.58;
-  const headLength = style === "markers" ? 0.86 : 1.2;
-  const headWidth = style === "markers" ? 0.92 : 1.28;
-  const y = 0.7;
-  const thickness = 0.12;
+  const shaftWidth = style === "markers" ? 0.34 : style === "dashed" ? 0.52 : 0.72;
+  const headLength = style === "markers" ? 0.9 : 1.28;
+  const headWidth = style === "markers" ? 1.0 : 1.36;
+  const y = 0.085;
 
   for (let index = 0; index < points.length - 1; index += 1) {
     const start = points[index];
@@ -1849,32 +1899,54 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
         x: end.x - (dx / length) * trim,
         y: end.y - (dz / length) * trim
       };
-      addArrowShaftSegments(group, start, shaftEnd, shaftWidth, y, thickness, material, edgeMaterial, style);
-      group.add(createExtrudedArrowHead(start, end, headLength, headWidth, y + thickness * 0.08, thickness, material, edgeMaterial));
+      addFloorSignShaftSegments(group, start, shaftEnd, shaftWidth, y, material, style);
+      group.add(createFloorSignArrowHead(start, end, headLength, headWidth, y + 0.003, material));
     } else {
-      addArrowShaftSegments(group, start, end, shaftWidth, y, thickness, material, edgeMaterial, style);
+      addFloorSignShaftSegments(group, start, end, shaftWidth, y, material, style);
     }
   }
 
+  for (let index = 1; index < points.length - 1; index += 1) {
+    group.add(createFloorSignJoint(points[index], shaftWidth * 1.08, y + 0.002, material));
+  }
+
   if (annotation.showMarkers !== false && style !== "dashed") {
-    for (const marker of getAnnotationArrowMarkerPolygons(annotation, style === "markers" ? 1.25 : 2.0, shaftWidth * 1.85, shaftWidth * 1.55)) {
-      group.add(createExtrudedPolygonModel(marker, y + thickness * 0.64, 0.035, material, edgeMaterial));
+    const markerMaterial = new THREE.MeshBasicMaterial({
+      color: baseColor.clone().multiplyScalar(0.82),
+      transparent: true,
+      opacity: annotation.flowType === "forklift" ? 0.5 : 0.42,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    for (const marker of getAnnotationArrowMarkerPolygons(annotation, style === "markers" ? 1.2 : 2.0, shaftWidth * 1.3, shaftWidth * 1.05)) {
+      group.add(createFloorSignPolygon(marker, y + 0.006, markerMaterial));
     }
+  }
+
+  if ((annotation.flowType ?? "material") === "forklift") {
+    addOneWayFloorLabels(group, annotation, y + 0.008, edgeColor);
   }
 
   if (annotation.label.trim()) {
     const label = createAnnotationArrowLabel(annotation);
     const labelPoint = getAnnotationArrowLabelPoint(annotation);
-    label.position.set(labelPoint.x, y + 0.42, labelPoint.y);
+    label.position.set(labelPoint.x, y + 0.38, labelPoint.y);
     group.add(label);
   }
 
   return group;
 }
 
-function addArrowShaftSegments(group: THREE.Group, start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, thickness: number, material: THREE.Material, edgeMaterial: THREE.Material, style: string) {
+function getFloorSignOpacity(annotation: AnnotationItem) {
+  const style = annotation.flowStyle ?? "band";
+  if (style === "markers") return 0.28;
+  if ((annotation.flowType ?? "material") === "forklift") return 0.42;
+  return 0.36;
+}
+
+function addFloorSignShaftSegments(group: THREE.Group, start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, material: THREE.Material, style: string) {
   if (style !== "dashed") {
-    group.add(createExtrudedArrowShaft(start, end, width, y, thickness, material, edgeMaterial));
+    group.add(createFloorSignShaft(start, end, width, y, material));
     return;
   }
 
@@ -1891,16 +1963,16 @@ function addArrowShaftSegments(group: THREE.Group, start: { x: number; y: number
     if (segmentLength < 0.18) continue;
     const segmentStart = { x: start.x + ux * offset, y: start.y + uz * offset };
     const segmentEnd = { x: start.x + ux * (offset + segmentLength), y: start.y + uz * (offset + segmentLength) };
-    group.add(createExtrudedArrowShaft(segmentStart, segmentEnd, width, y, thickness, material, edgeMaterial));
+    group.add(createFloorSignShaft(segmentStart, segmentEnd, width, y, material));
   }
 }
 
-function createExtrudedArrowShaft(start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, thickness: number, material: THREE.Material, edgeMaterial: THREE.Material) {
+function createFloorSignShaft(start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, material: THREE.Material) {
   const polygon = makeSegmentPolygon(start, end, width);
-  return createExtrudedPolygonModel(polygon, y, thickness, material, edgeMaterial);
+  return createFloorSignPolygon(polygon, y, material);
 }
 
-function createExtrudedArrowHead(start: { x: number; y: number }, end: { x: number; y: number }, length: number, width: number, y: number, thickness: number, material: THREE.Material, edgeMaterial: THREE.Material) {
+function createFloorSignArrowHead(start: { x: number; y: number }, end: { x: number; y: number }, length: number, width: number, y: number, material: THREE.Material) {
   const dx = end.x - start.x;
   const dz = end.y - start.y;
   const segmentLength = Math.hypot(dx, dz) || 1;
@@ -1915,7 +1987,89 @@ function createExtrudedArrowHead(start: { x: number; y: number }, end: { x: numb
     { x: base.x + px * width / 2, y: base.y + pz * width / 2 },
     { x: base.x - px * width / 2, y: base.y - pz * width / 2 }
   ];
-  return createExtrudedPolygonModel(polygon, y, thickness, material, edgeMaterial);
+  return createFloorSignPolygon(polygon, y, material);
+}
+
+function createFloorSignJoint(center: { x: number; y: number }, width: number, y: number, material: THREE.Material) {
+  const half = width / 2;
+  return createFloorSignPolygon([
+    { x: center.x - half, y: center.y - half },
+    { x: center.x + half, y: center.y - half },
+    { x: center.x + half, y: center.y + half },
+    { x: center.x - half, y: center.y + half }
+  ], y, material);
+}
+
+function createFloorSignPolygon(points: Array<{ x: number; y: number }>, y: number, material: THREE.Material) {
+  const shape = new THREE.Shape();
+  points.forEach((point, index) => {
+    if (index === 0) shape.moveTo(point.x, point.y);
+    else shape.lineTo(point.x, point.y);
+  });
+  shape.closePath();
+  const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), material);
+  mesh.rotation.x = Math.PI / 2;
+  mesh.position.y = y;
+  mesh.renderOrder = 0.5;
+  return mesh;
+}
+
+function addOneWayFloorLabels(group: THREE.Group, annotation: AnnotationItem, y: number, color: THREE.Color) {
+  const points = getAnnotationArrowPoints(annotation);
+  const texture = createFloorTextTexture("ONE WAY", `#${color.getHexString()}`);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    opacity: 0.68,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const dx = end.x - start.x;
+    const dz = end.y - start.y;
+    const length = Math.hypot(dx, dz);
+    if (length < 3.0) continue;
+    const count = Math.max(1, Math.floor(length / 4.8));
+    const angle = Math.atan2(dz, dx);
+    for (let step = 1; step <= count; step += 1) {
+      const t = step / (count + 1);
+      const label = new THREE.Mesh(new THREE.PlaneGeometry(1.45, 0.46), material);
+      label.position.set(start.x + dx * t, y, start.y + dz * t);
+      label.rotation.x = -Math.PI / 2;
+      label.rotation.z = -angle;
+      label.renderOrder = 0.6;
+      group.add(label);
+    }
+  }
+}
+
+function createFloorTextTexture(text: string, color: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 160;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return new THREE.CanvasTexture(canvas);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "rgba(255,255,255,0.72)";
+  roundRect(ctx, 28, 34, 456, 92, 20);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 8;
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.font = "bold 54px Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 256, 80);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
 }
 
 function makeSegmentPolygon(start: { x: number; y: number }, end: { x: number; y: number }, width: number) {
@@ -1930,35 +2084,6 @@ function makeSegmentPolygon(start: { x: number; y: number }, end: { x: number; y
     { x: end.x - px, y: end.y - pz },
     { x: start.x - px, y: start.y - pz }
   ];
-}
-
-function createExtrudedPolygonModel(points: Array<{ x: number; y: number }>, y: number, thickness: number, material: THREE.Material, edgeMaterial: THREE.Material) {
-  const shape = new THREE.Shape();
-  points.forEach((point, index) => {
-    if (index === 0) shape.moveTo(point.x, point.y);
-    else shape.lineTo(point.x, point.y);
-  });
-  shape.closePath();
-
-  const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: thickness,
-    bevelEnabled: false,
-    curveSegments: 1
-  });
-  geometry.translate(0, 0, -thickness / 2);
-
-  const group = new THREE.Group();
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.rotation.x = Math.PI / 2;
-  mesh.position.y = y;
-  group.add(mesh);
-
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMaterial);
-  edges.rotation.copy(mesh.rotation);
-  edges.position.copy(mesh.position);
-  group.add(edges);
-
-  return group;
 }
 
 function getAnnotationArrowMarkerPolygons(annotation: AnnotationItem, spacing: number, length: number, width: number) {

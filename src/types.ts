@@ -27,6 +27,7 @@ export type AnnotationItem = {
   flowType?: ArrowFlowType;
   flowStyle?: ArrowStyle;
   showMarkers?: boolean;
+  snapToPath?: boolean;
 };
 
 export type EquipmentTemplate = {

@@ -52,6 +52,14 @@ export function AnnotationProperties({ annotation, onUpdate, onDelete }: Annotat
             />
             Direction markers
           </label>
+          <label className="inline-toggle">
+            <input
+              type="checkbox"
+              checked={annotation.snapToPath !== false}
+              onChange={(event) => onUpdate(annotation.id, { snapToPath: event.target.checked })}
+            />
+            Snap to aisle
+          </label>
         </>
       ) : (
         <>
