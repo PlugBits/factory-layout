@@ -1,5 +1,5 @@
 import { CornerDownRight, Eye, EyeOff, Info, MessageSquare, MoveRight, Trash2, TriangleAlert } from "lucide-react";
-import type { AnnotationItem, AnnotationKind, ArrowShape, NoteIcon } from "../types";
+import type { AnnotationItem, AnnotationKind, ArrowFlowType, ArrowShape, ArrowStyle, NoteIcon } from "../types";
 
 type AnnotationLayerProps = {
   annotations: AnnotationItem[];
@@ -34,6 +34,20 @@ export const arrowShapeOptions: Array<{ label: string; value: ArrowShape }> = [
   { label: "Elbow", value: "elbow" },
   { label: "Left turn", value: "left-turn" },
   { label: "Right turn", value: "right-turn" }
+];
+
+export const arrowFlowTypeOptions: Array<{ label: string; value: ArrowFlowType; color: string }> = [
+  { label: "Material", value: "material", color: "#0f766e" },
+  { label: "Forklift", value: "forklift", color: "#ca8a04" },
+  { label: "Worker", value: "worker", color: "#2563eb" },
+  { label: "Warning", value: "warning", color: "#dc2626" },
+  { label: "Custom", value: "custom", color: "#334155" }
+];
+
+export const arrowStyleOptions: Array<{ label: string; value: ArrowStyle }> = [
+  { label: "Band", value: "band" },
+  { label: "Dashed", value: "dashed" },
+  { label: "Markers", value: "markers" }
 ];
 
 export const noteIconOptions: Array<{ label: string; value: NoteIcon }> = [
@@ -96,14 +110,38 @@ export function AnnotationLayer({
       <svg className="annotation-svg" aria-hidden="true">
         {annotations.filter((annotation) => annotation.visible && annotation.kind === "arrow").map((annotation) => {
           const arrowHead = getArrowHeadPoints(annotation, pxPerMeter);
+          const style = annotation.flowStyle ?? "band";
+          const strokeWidth = getArrowStrokeWidth(annotation);
+          const markers = getArrowDirectionMarkers(annotation, pxPerMeter, strokeWidth);
+          const labelPoint = getAnnotationLabelPoint(annotation);
           return (
             <g key={annotation.id} className={annotation.id === selectedId ? "annotation-selected" : ""}>
               <path
                 className="annotation-arrow-shaft"
                 d={getArrowPath(annotation, pxPerMeter, 30)}
                 stroke={annotation.color}
+                strokeWidth={strokeWidth}
+                strokeDasharray={style === "dashed" ? `${strokeWidth * 1.8} ${strokeWidth * 1.15}` : undefined}
               />
+              {markers.map((marker, index) => (
+                <polygon
+                  key={index}
+                  className="annotation-arrow-marker"
+                  points={marker}
+                  fill={annotation.color}
+                />
+              ))}
               <polygon className="annotation-arrow-head" points={arrowHead} fill={annotation.color} />
+              {annotation.label.trim() ? (
+                <text
+                  className="annotation-flow-label"
+                  x={labelPoint.x * pxPerMeter}
+                  y={labelPoint.y * pxPerMeter}
+                  fill={annotation.color}
+                >
+                  {annotation.label}
+                </text>
+              ) : null}
             </g>
           );
         })}
@@ -147,7 +185,7 @@ export function AnnotationLayer({
             onClick={() => onSelect(annotation.id)}
           >
             {annotation.kind === "arrow" ? <MoveRight size={14} /> : <NoteIconView icon={annotation.noteIcon} size={14} />}
-            {annotation.kind === "note" || annotation.label.trim() ? <span>{annotation.label}</span> : null}
+            {annotation.kind === "note" ? <span>{annotation.label}</span> : null}
             {annotation.id === selectedId ? (
               <span
                 className="annotation-delete-icon"
@@ -280,6 +318,13 @@ function getAnnotationLabelPoint(annotation: AnnotationItem) {
   return { x: bend.x, y: bend.y };
 }
 
+function getArrowStrokeWidth(annotation: AnnotationItem) {
+  const style = annotation.flowStyle ?? "band";
+  if (style === "markers") return 6;
+  if (style === "dashed") return 12;
+  return 16;
+}
+
 function getArrowPath(annotation: AnnotationItem, pxPerMeter: number, trimEndPx = 0) {
   const points = getArrowPoints(annotation, pxPerMeter);
   const trimmedPoints = trimEndPx > 0 ? trimArrowEnd(points, trimEndPx) : points;
@@ -297,8 +342,9 @@ function getArrowHeadPoints(annotation: AnnotationItem, pxPerMeter: number) {
   const uy = dy / length;
   const px = -uy;
   const py = ux;
-  const headLength = 34;
-  const headWidth = 30;
+  const strokeWidth = getArrowStrokeWidth(annotation);
+  const headLength = strokeWidth * 3.1;
+  const headWidth = strokeWidth * 2.6;
   const baseX = end.x - ux * headLength;
   const baseY = end.y - uy * headLength;
   return [
@@ -306,6 +352,43 @@ function getArrowHeadPoints(annotation: AnnotationItem, pxPerMeter: number) {
     `${baseX + px * headWidth / 2},${baseY + py * headWidth / 2}`,
     `${baseX - px * headWidth / 2},${baseY - py * headWidth / 2}`
   ].join(" ");
+}
+
+function getArrowDirectionMarkers(annotation: AnnotationItem, pxPerMeter: number, strokeWidth: number) {
+  const style = annotation.flowStyle ?? "band";
+  if (annotation.showMarkers === false || style === "dashed") return [];
+  const points = getArrowPoints(annotation, pxPerMeter);
+  const markers: string[] = [];
+  const spacing = style === "markers" ? 38 : 62;
+  const markerLength = Math.max(16, strokeWidth * 1.55);
+  const markerWidth = Math.max(12, strokeWidth * 1.25);
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+    if (length < spacing * 0.8) continue;
+    const ux = dx / length;
+    const uy = dy / length;
+    const px = -uy;
+    const py = ux;
+    const count = Math.max(1, Math.floor(length / spacing));
+    for (let step = 1; step <= count; step += 1) {
+      const t = step / (count + 1);
+      const cx = start.x + dx * t;
+      const cy = start.y + dy * t;
+      const tip = { x: cx + ux * markerLength * 0.5, y: cy + uy * markerLength * 0.5 };
+      const base = { x: cx - ux * markerLength * 0.5, y: cy - uy * markerLength * 0.5 };
+      markers.push([
+        `${tip.x},${tip.y}`,
+        `${base.x + px * markerWidth / 2},${base.y + py * markerWidth / 2}`,
+        `${base.x - px * markerWidth / 2},${base.y - py * markerWidth / 2}`
+      ].join(" "));
+    }
+  }
+  return markers;
 }
 
 function getArrowPoints(annotation: AnnotationItem, pxPerMeter: number) {

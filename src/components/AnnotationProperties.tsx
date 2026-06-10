@@ -1,6 +1,6 @@
 import { Info, MessageSquare, Trash2, TriangleAlert } from "lucide-react";
-import { annotationColors, arrowShapeOptions, noteIconOptions } from "./AnnotationLayer";
-import type { AnnotationItem, ArrowShape, NoteIcon } from "../types";
+import { annotationColors, arrowFlowTypeOptions, arrowShapeOptions, arrowStyleOptions, noteIconOptions } from "./AnnotationLayer";
+import type { AnnotationItem, ArrowFlowType, ArrowShape, ArrowStyle, NoteIcon } from "../types";
 
 type AnnotationPropertiesProps = {
   annotation: AnnotationItem;
@@ -9,19 +9,50 @@ type AnnotationPropertiesProps = {
 };
 
 export function AnnotationProperties({ annotation, onUpdate, onDelete }: AnnotationPropertiesProps) {
+  const updateArrowType = (flowType: ArrowFlowType) => {
+    const preset = arrowFlowTypeOptions.find((option) => option.value === flowType);
+    onUpdate(annotation.id, { flowType, ...(preset && flowType !== "custom" ? { color: preset.color } : {}) });
+  };
+
   return (
     <>
       <div className="panel-title">Layer Item</div>
       <label>Label<input value={annotation.label} onChange={(event) => onUpdate(annotation.id, { label: event.target.value })} /></label>
       {annotation.kind === "arrow" ? (
-        <label>Arrow Type
-          <select
-            value={annotation.shape ?? "straight"}
-            onChange={(event) => onUpdate(annotation.id, { shape: event.target.value as ArrowShape })}
-          >
-            {arrowShapeOptions.map((shape) => <option key={shape.value} value={shape.value}>{shape.label}</option>)}
-          </select>
-        </label>
+        <>
+          <label>Flow Type
+            <select
+              value={annotation.flowType ?? "material"}
+              onChange={(event) => updateArrowType(event.target.value as ArrowFlowType)}
+            >
+              {arrowFlowTypeOptions.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+            </select>
+          </label>
+          <label>Path Type
+            <select
+              value={annotation.shape ?? "straight"}
+              onChange={(event) => onUpdate(annotation.id, { shape: event.target.value as ArrowShape })}
+            >
+              {arrowShapeOptions.map((shape) => <option key={shape.value} value={shape.value}>{shape.label}</option>)}
+            </select>
+          </label>
+          <label>Style
+            <select
+              value={annotation.flowStyle ?? "band"}
+              onChange={(event) => onUpdate(annotation.id, { flowStyle: event.target.value as ArrowStyle })}
+            >
+              {arrowStyleOptions.map((style) => <option key={style.value} value={style.value}>{style.label}</option>)}
+            </select>
+          </label>
+          <label className="inline-toggle">
+            <input
+              type="checkbox"
+              checked={annotation.showMarkers !== false}
+              onChange={(event) => onUpdate(annotation.id, { showMarkers: event.target.checked })}
+            />
+            Direction markers
+          </label>
+        </>
       ) : (
         <>
           <div className="annotation-color-block">

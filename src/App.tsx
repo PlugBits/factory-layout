@@ -320,9 +320,12 @@ function App() {
         y1: start.y,
         x2,
         y2,
-        color: "#dc2626",
+        color: "#0f766e",
         visible: true,
-        shape: "straight"
+        shape: "straight",
+        flowType: "material",
+        flowStyle: "band",
+        showMarkers: true
       }
     ]);
     setSelectedAnnotationId(id);
@@ -1824,9 +1827,10 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
     opacity: 0.68
   });
   const points = getAnnotationArrowPoints(annotation);
-  const shaftWidth = 0.42;
-  const headLength = 1.05;
-  const headWidth = 1.1;
+  const style = annotation.flowStyle ?? "band";
+  const shaftWidth = style === "markers" ? 0.28 : style === "dashed" ? 0.46 : 0.58;
+  const headLength = style === "markers" ? 0.86 : 1.2;
+  const headWidth = style === "markers" ? 0.92 : 1.28;
   const y = 0.7;
   const thickness = 0.12;
 
@@ -1845,14 +1849,50 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
         x: end.x - (dx / length) * trim,
         y: end.y - (dz / length) * trim
       };
-      group.add(createExtrudedArrowShaft(start, shaftEnd, shaftWidth, y, thickness, material, edgeMaterial));
+      addArrowShaftSegments(group, start, shaftEnd, shaftWidth, y, thickness, material, edgeMaterial, style);
       group.add(createExtrudedArrowHead(start, end, headLength, headWidth, y + thickness * 0.08, thickness, material, edgeMaterial));
     } else {
-      group.add(createExtrudedArrowShaft(start, end, shaftWidth, y, thickness, material, edgeMaterial));
+      addArrowShaftSegments(group, start, end, shaftWidth, y, thickness, material, edgeMaterial, style);
     }
   }
 
+  if (annotation.showMarkers !== false && style !== "dashed") {
+    for (const marker of getAnnotationArrowMarkerPolygons(annotation, style === "markers" ? 1.25 : 2.0, shaftWidth * 1.85, shaftWidth * 1.55)) {
+      group.add(createExtrudedPolygonModel(marker, y + thickness * 0.64, 0.035, material, edgeMaterial));
+    }
+  }
+
+  if (annotation.label.trim()) {
+    const label = createAnnotationArrowLabel(annotation);
+    const labelPoint = getAnnotationArrowLabelPoint(annotation);
+    label.position.set(labelPoint.x, y + 0.42, labelPoint.y);
+    group.add(label);
+  }
+
   return group;
+}
+
+function addArrowShaftSegments(group: THREE.Group, start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, thickness: number, material: THREE.Material, edgeMaterial: THREE.Material, style: string) {
+  if (style !== "dashed") {
+    group.add(createExtrudedArrowShaft(start, end, width, y, thickness, material, edgeMaterial));
+    return;
+  }
+
+  const dx = end.x - start.x;
+  const dz = end.y - start.y;
+  const length = Math.hypot(dx, dz);
+  if (length < 0.05) return;
+  const ux = dx / length;
+  const uz = dz / length;
+  const dash = 1.1;
+  const gap = 0.55;
+  for (let offset = 0; offset < length; offset += dash + gap) {
+    const segmentLength = Math.min(dash, length - offset);
+    if (segmentLength < 0.18) continue;
+    const segmentStart = { x: start.x + ux * offset, y: start.y + uz * offset };
+    const segmentEnd = { x: start.x + ux * (offset + segmentLength), y: start.y + uz * (offset + segmentLength) };
+    group.add(createExtrudedArrowShaft(segmentStart, segmentEnd, width, y, thickness, material, edgeMaterial));
+  }
 }
 
 function createExtrudedArrowShaft(start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, thickness: number, material: THREE.Material, edgeMaterial: THREE.Material) {
@@ -1919,6 +1959,81 @@ function createExtrudedPolygonModel(points: Array<{ x: number; y: number }>, y: 
   group.add(edges);
 
   return group;
+}
+
+function getAnnotationArrowMarkerPolygons(annotation: AnnotationItem, spacing: number, length: number, width: number) {
+  const points = getAnnotationArrowPoints(annotation);
+  const markers: Array<Array<{ x: number; y: number }>> = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const dx = end.x - start.x;
+    const dz = end.y - start.y;
+    const segmentLength = Math.hypot(dx, dz);
+    if (segmentLength < spacing * 0.85) continue;
+    const ux = dx / segmentLength;
+    const uz = dz / segmentLength;
+    const px = -uz;
+    const pz = ux;
+    const count = Math.max(1, Math.floor(segmentLength / spacing));
+    for (let step = 1; step <= count; step += 1) {
+      const t = step / (count + 1);
+      const cx = start.x + dx * t;
+      const cy = start.y + dz * t;
+      const tip = { x: cx + ux * length * 0.5, y: cy + uz * length * 0.5 };
+      const base = { x: cx - ux * length * 0.5, y: cy - uz * length * 0.5 };
+      markers.push([
+        tip,
+        { x: base.x + px * width / 2, y: base.y + pz * width / 2 },
+        { x: base.x - px * width / 2, y: base.y - pz * width / 2 }
+      ]);
+    }
+  }
+  return markers;
+}
+
+function getAnnotationArrowLabelPoint(annotation: AnnotationItem) {
+  if ((annotation.shape ?? "straight") === "straight") {
+    return { x: (annotation.x1 + annotation.x2) / 2, y: (annotation.y1 + annotation.y2) / 2 };
+  }
+  return getAnnotationArrowBend(annotation);
+}
+
+function createAnnotationArrowLabel(annotation: AnnotationItem) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 192;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return new THREE.Sprite();
+
+  const color = annotation.color;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "rgba(255,255,255,0.94)";
+  roundRect(ctx, 24, 44, 464, 104, 24);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 8;
+  ctx.stroke();
+
+  ctx.fillStyle = color;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  let fontSize = 50;
+  const label = annotation.label.trim();
+  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  while (ctx.measureText(label).width > 410 && fontSize > 24) {
+    fontSize -= 4;
+    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  }
+  ctx.fillText(label, 256, 96);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
+  sprite.scale.set(1.8, 0.675, 1);
+  sprite.renderOrder = 1;
+  return sprite;
 }
 
 function createAnnotationNoteLabel(annotation: AnnotationItem) {

@@ -7,6 +7,8 @@ export type Waypoint = { id: string; x: number; y: number };
 
 export type AnnotationKind = "arrow" | "note";
 export type ArrowShape = "straight" | "elbow" | "left-turn" | "right-turn";
+export type ArrowFlowType = "material" | "forklift" | "worker" | "warning" | "custom";
+export type ArrowStyle = "band" | "dashed" | "markers";
 export type NoteIcon = "note" | "info" | "warning";
 
 export type AnnotationItem = {
@@ -22,6 +24,9 @@ export type AnnotationItem = {
   color: string;
   visible: boolean;
   shape?: ArrowShape;
+  flowType?: ArrowFlowType;
+  flowStyle?: ArrowStyle;
+  showMarkers?: boolean;
 };
 
 export type EquipmentTemplate = {

@@ -838,17 +838,34 @@ textarea {
 
 .annotation-arrow-shaft {
   fill: none;
-  stroke-width: 10;
   stroke-linecap: round;
   stroke-linejoin: round;
+  opacity: 0.78;
 }
 
 .annotation-selected .annotation-arrow-shaft {
-  stroke-width: 12;
+  opacity: 0.96;
 }
 
 .annotation-arrow-head {
   stroke: none;
+  opacity: 0.88;
+}
+
+.annotation-arrow-marker {
+  opacity: 0.52;
+}
+
+.annotation-flow-label {
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.94);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+  font-size: 12px;
+  font-weight: 900;
+  pointer-events: none;
+  text-anchor: middle;
+  dominant-baseline: central;
 }
 
 .annotation-hit {
