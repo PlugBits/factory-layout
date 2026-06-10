@@ -1880,8 +1880,8 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
   const points = getAnnotationArrowPoints(annotation);
   const style = annotation.flowStyle ?? "band";
   const shaftWidth = style === "markers" ? 0.34 : style === "dashed" ? 0.52 : 0.72;
-  const headLength = style === "markers" ? 0.9 : 1.28;
-  const headWidth = style === "markers" ? 1.0 : 1.36;
+  const headLength = style === "markers" ? 0.9 : 1.18;
+  const headWidth = style === "markers" ? 1.0 : 1.22;
   const y = 0.085;
 
   for (let index = 0; index < points.length - 1; index += 1) {
@@ -1899,39 +1899,25 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
         x: end.x - (dx / length) * trim,
         y: end.y - (dz / length) * trim
       };
-      addFloorSignShaftSegments(group, start, shaftEnd, shaftWidth, y, material, style);
       group.add(createFloorSignArrowHead(start, end, headLength, headWidth, y + 0.003, material));
-    } else {
-      addFloorSignShaftSegments(group, start, end, shaftWidth, y, material, style);
     }
-  }
-
-  for (let index = 1; index < points.length - 1; index += 1) {
-    group.add(createFloorSignJoint(points[index], shaftWidth * 1.08, y + 0.002, material));
   }
 
   if (annotation.showMarkers !== false && style !== "dashed") {
     const markerMaterial = new THREE.MeshBasicMaterial({
       color: baseColor.clone().multiplyScalar(0.82),
       transparent: true,
-      opacity: annotation.flowType === "forklift" ? 0.5 : 0.42,
+      opacity: annotation.flowType === "forklift" ? 0.58 : 0.5,
       side: THREE.DoubleSide,
       depthWrite: false
     });
-    for (const marker of getAnnotationArrowMarkerPolygons(annotation, style === "markers" ? 1.2 : 2.0, shaftWidth * 1.3, shaftWidth * 1.05)) {
+    for (const marker of getAnnotationArrowMarkerPolygons(annotation, style === "markers" ? 3.2 : 4.2, shaftWidth * 1.35, shaftWidth * 1.08)) {
       group.add(createFloorSignPolygon(marker, y + 0.006, markerMaterial));
     }
   }
 
-  if ((annotation.flowType ?? "material") === "forklift") {
-    addOneWayFloorLabels(group, annotation, y + 0.008, edgeColor);
-  }
-
   if (annotation.label.trim()) {
-    const label = createAnnotationArrowLabel(annotation);
-    const labelPoint = getAnnotationArrowLabelPoint(annotation);
-    label.position.set(labelPoint.x, y + 0.38, labelPoint.y);
-    group.add(label);
+    addFloorLabels(group, annotation, y + 0.008, edgeColor);
   }
 
   return group;
@@ -1939,37 +1925,9 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
 
 function getFloorSignOpacity(annotation: AnnotationItem) {
   const style = annotation.flowStyle ?? "band";
-  if (style === "markers") return 0.28;
-  if ((annotation.flowType ?? "material") === "forklift") return 0.42;
-  return 0.36;
-}
-
-function addFloorSignShaftSegments(group: THREE.Group, start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, material: THREE.Material, style: string) {
-  if (style !== "dashed") {
-    group.add(createFloorSignShaft(start, end, width, y, material));
-    return;
-  }
-
-  const dx = end.x - start.x;
-  const dz = end.y - start.y;
-  const length = Math.hypot(dx, dz);
-  if (length < 0.05) return;
-  const ux = dx / length;
-  const uz = dz / length;
-  const dash = 1.1;
-  const gap = 0.55;
-  for (let offset = 0; offset < length; offset += dash + gap) {
-    const segmentLength = Math.min(dash, length - offset);
-    if (segmentLength < 0.18) continue;
-    const segmentStart = { x: start.x + ux * offset, y: start.y + uz * offset };
-    const segmentEnd = { x: start.x + ux * (offset + segmentLength), y: start.y + uz * (offset + segmentLength) };
-    group.add(createFloorSignShaft(segmentStart, segmentEnd, width, y, material));
-  }
-}
-
-function createFloorSignShaft(start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, material: THREE.Material) {
-  const polygon = makeSegmentPolygon(start, end, width);
-  return createFloorSignPolygon(polygon, y, material);
+  if (style === "markers") return 0.42;
+  if ((annotation.flowType ?? "material") === "forklift") return 0.56;
+  return 0.48;
 }
 
 function createFloorSignArrowHead(start: { x: number; y: number }, end: { x: number; y: number }, length: number, width: number, y: number, material: THREE.Material) {
@@ -1990,16 +1948,6 @@ function createFloorSignArrowHead(start: { x: number; y: number }, end: { x: num
   return createFloorSignPolygon(polygon, y, material);
 }
 
-function createFloorSignJoint(center: { x: number; y: number }, width: number, y: number, material: THREE.Material) {
-  const half = width / 2;
-  return createFloorSignPolygon([
-    { x: center.x - half, y: center.y - half },
-    { x: center.x + half, y: center.y - half },
-    { x: center.x + half, y: center.y + half },
-    { x: center.x - half, y: center.y + half }
-  ], y, material);
-}
-
 function createFloorSignPolygon(points: Array<{ x: number; y: number }>, y: number, material: THREE.Material) {
   const shape = new THREE.Shape();
   points.forEach((point, index) => {
@@ -2014,9 +1962,10 @@ function createFloorSignPolygon(points: Array<{ x: number; y: number }>, y: numb
   return mesh;
 }
 
-function addOneWayFloorLabels(group: THREE.Group, annotation: AnnotationItem, y: number, color: THREE.Color) {
+function addFloorLabels(group: THREE.Group, annotation: AnnotationItem, y: number, color: THREE.Color) {
   const points = getAnnotationArrowPoints(annotation);
-  const texture = createFloorTextTexture("ONE WAY", `#${color.getHexString()}`);
+  const text = annotation.label.trim();
+  const texture = createFloorTextTexture(text, `#${color.getHexString()}`);
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
@@ -2032,11 +1981,11 @@ function addOneWayFloorLabels(group: THREE.Group, annotation: AnnotationItem, y:
     const dz = end.y - start.y;
     const length = Math.hypot(dx, dz);
     if (length < 3.0) continue;
-    const count = Math.max(1, Math.floor(length / 4.8));
+    const count = Math.max(1, Math.min(3, Math.floor(length / 7.0)));
     const angle = Math.atan2(dz, dx);
     for (let step = 1; step <= count; step += 1) {
       const t = step / (count + 1);
-      const label = new THREE.Mesh(new THREE.PlaneGeometry(1.45, 0.46), material);
+      const label = new THREE.Mesh(new THREE.PlaneGeometry(getFloorLabelWidth(text), 0.46), material);
       label.position.set(start.x + dx * t, y, start.y + dz * t);
       label.rotation.x = -Math.PI / 2;
       label.rotation.z = -angle;
@@ -2072,6 +2021,10 @@ function createFloorTextTexture(text: string, color: string) {
   return texture;
 }
 
+function getFloorLabelWidth(text: string) {
+  return THREE.MathUtils.clamp(0.55 + text.length * 0.12, 1.35, 2.45);
+}
+
 function makeSegmentPolygon(start: { x: number; y: number }, end: { x: number; y: number }, width: number) {
   const dx = end.x - start.x;
   const dz = end.y - start.y;
@@ -2100,7 +2053,7 @@ function getAnnotationArrowMarkerPolygons(annotation: AnnotationItem, spacing: n
     const uz = dz / segmentLength;
     const px = -uz;
     const pz = ux;
-    const count = Math.max(1, Math.floor(segmentLength / spacing));
+    const count = Math.max(1, Math.min(5, Math.floor(segmentLength / spacing)));
     for (let step = 1; step <= count; step += 1) {
       const t = step / (count + 1);
       const cx = start.x + dx * t;
@@ -2115,50 +2068,6 @@ function getAnnotationArrowMarkerPolygons(annotation: AnnotationItem, spacing: n
     }
   }
   return markers;
-}
-
-function getAnnotationArrowLabelPoint(annotation: AnnotationItem) {
-  if ((annotation.shape ?? "straight") === "straight") {
-    return { x: (annotation.x1 + annotation.x2) / 2, y: (annotation.y1 + annotation.y2) / 2 };
-  }
-  return getAnnotationArrowBend(annotation);
-}
-
-function createAnnotationArrowLabel(annotation: AnnotationItem) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 192;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return new THREE.Sprite();
-
-  const color = annotation.color;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "rgba(255,255,255,0.94)";
-  roundRect(ctx, 24, 44, 464, 104, 24);
-  ctx.fill();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 8;
-  ctx.stroke();
-
-  ctx.fillStyle = color;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  let fontSize = 50;
-  const label = annotation.label.trim();
-  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-  while (ctx.measureText(label).width > 410 && fontSize > 24) {
-    fontSize -= 4;
-    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-  }
-  ctx.fillText(label, 256, 96);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
-  sprite.scale.set(1.8, 0.675, 1);
-  sprite.renderOrder = 1;
-  return sprite;
 }
 
 function createAnnotationNoteLabel(annotation: AnnotationItem) {
