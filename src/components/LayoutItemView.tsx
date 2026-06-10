@@ -29,6 +29,8 @@ export function LayoutItemView({
   const displayDepth = rotated ? item.width : item.depth;
   const left = item.x + item.width / 2 - displayWidth / 2;
   const top = item.y + item.depth / 2 - displayDepth / 2;
+  const routeSignCount = Math.max(1, Math.min(5, Math.floor((rotated ? displayDepth : displayWidth) / 3.2)));
+  const routeSigns = Array.from({ length: routeSignCount }, (_, index) => index);
 
   return (
     <div
@@ -50,10 +52,15 @@ export function LayoutItemView({
     >
       {showRouteSigns ? (
         <div className={`item-route-signs route-${item.trafficDirection ?? "none"}${rotated ? " route-vertical" : ""}`}>
-          <span className="route-line" />
-          <span className="route-chevron route-chevron-a" />
-          <span className="route-chevron route-chevron-b" />
-          <span className="route-label">{routeLabel}</span>
+          {routeSigns.map((index) => (
+            <span
+              key={index}
+              className="route-arrow-sign"
+              style={{ "--route-sign-offset": `${((index + 1) / (routeSignCount + 1)) * 100}%` } as CSSProperties}
+            >
+              <span>{routeLabel}</span>
+            </span>
+          ))}
         </div>
       ) : null}
       <div className="item-icon">{item.icon}</div>

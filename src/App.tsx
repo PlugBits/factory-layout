@@ -1274,7 +1274,7 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
     for (const [index, item] of items.entries()) {
       const model = createEquipmentModel(item);
       model.position.set(item.x + item.width / 2, 0, item.y + item.depth / 2);
-      model.rotation.y = THREE.MathUtils.degToRad(item.rotation);
+      model.rotation.y = -THREE.MathUtils.degToRad(item.rotation);
       scene.add(model);
 
       if (item.id === selectedId) {
@@ -1959,96 +1959,40 @@ function addForkliftRouteSigns(group: THREE.Group, item: LayoutItem, width: numb
   const direction = item.trafficDirection ?? "none";
   if (direction === "none" || item.showFloorSigns === false) return;
 
-  const baseColor = new THREE.Color(item.routeSignColor ?? "#0f766e");
-  const signColor = baseColor.clone().multiplyScalar(0.62);
-  const fillMaterial = new THREE.MeshBasicMaterial({
-    color: signColor.clone().lerp(new THREE.Color("#ffffff"), 0.18),
-    transparent: true,
-    opacity: 0.48,
-    side: THREE.DoubleSide,
-    depthWrite: false
-  });
-  const outlineMaterial = new THREE.LineBasicMaterial({
-    color: signColor,
-    transparent: true,
-    opacity: 0.82,
-    depthWrite: false
-  });
-  const lineMaterial = new THREE.MeshBasicMaterial({
-    color: signColor,
-    transparent: true,
-    opacity: 0.54,
-    side: THREE.DoubleSide,
-    depthWrite: false
-  });
   const y = height + 0.018;
   const routeInset = Math.min(1.0, width * 0.14);
   const startX = -width / 2 + routeInset;
   const endX = width / 2 - routeInset;
-  const centerZ = 0;
-  const lineWidth = Math.min(0.12, Math.max(0.06, depth * 0.045));
-  const markerLength = Math.min(0.6, Math.max(0.36, width * 0.08));
-  const markerWidth = Math.min(0.42, Math.max(0.26, depth * 0.22));
+  const labelText = (item.floorLabel ?? (direction === "two-way" ? "TWO WAY" : "ONE WAY")).trim();
+  if (!labelText) return;
+
+  const signWidth = Math.min(2.15, Math.max(1.45, width * 0.18));
+  const signHeight = Math.min(0.62, Math.max(0.42, depth * 0.24));
+  const signTexture = createRouteArrowTexture(labelText, item.routeSignColor ?? "#0f766e");
+  const signMaterial = new THREE.MeshBasicMaterial({
+    map: signTexture,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
   const lanes = direction === "two-way"
     ? [{ z: -depth * 0.18, sign: 1 }, { z: depth * 0.18, sign: -1 }]
-    : [{ z: centerZ, sign: direction === "reverse" ? -1 : 1 }];
+    : [{ z: 0, sign: direction === "reverse" ? -1 : 1 }];
 
   for (const lane of lanes) {
-    group.add(createFloorSignMark(
-      makeSegmentPolygon({ x: startX, y: lane.z }, { x: endX, y: lane.z }, lineWidth),
-      y,
-      lineMaterial,
-      outlineMaterial,
-      0.58
-    ));
     const length = Math.abs(endX - startX);
-    const count = Math.max(1, Math.min(4, Math.floor(length / 3.0)));
+    const count = Math.max(1, Math.min(6, Math.floor(length / 3.2)));
     for (let index = 1; index <= count; index += 1) {
       const t = index / (count + 1);
       const x = startX + (endX - startX) * t;
-      group.add(createFloorSignMark(
-        makeFloorChevron({ x, y: lane.z }, lane.sign > 0 ? 0 : Math.PI, markerLength, markerWidth),
-        y + 0.008,
-        fillMaterial,
-        outlineMaterial,
-        0.82
-      ));
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(signWidth, signHeight), signMaterial);
+      sign.position.set(x, y, lane.z);
+      sign.rotation.x = -Math.PI / 2;
+      sign.rotation.z = lane.sign > 0 ? 0 : Math.PI;
+      sign.renderOrder = 0.96;
+      group.add(sign);
     }
   }
-
-  const labelText = (item.floorLabel ?? (direction === "two-way" ? "TWO WAY" : "ONE WAY")).trim();
-  if (labelText) {
-    const label = createFloorRouteLabel(labelText, item.routeSignColor ?? "#0f766e");
-    label.position.set(0, y + 0.012, direction === "two-way" ? 0 : -depth * 0.22);
-    label.rotation.x = -Math.PI / 2;
-    label.rotation.z = direction === "reverse" ? Math.PI : 0;
-    group.add(label);
-  }
-}
-
-function makeFloorChevron(center: { x: number; y: number }, angle: number, length: number, width: number) {
-  const ux = Math.cos(angle);
-  const uz = Math.sin(angle);
-  const px = -uz;
-  const pz = ux;
-  const tip = { x: center.x + ux * length * 0.5, y: center.y + uz * length * 0.5 };
-  const base = { x: center.x - ux * length * 0.5, y: center.y - uz * length * 0.5 };
-  return [
-    tip,
-    { x: base.x + px * width / 2, y: base.y + pz * width / 2 },
-    { x: base.x - px * width / 2, y: base.y - pz * width / 2 }
-  ];
-}
-
-function createFloorRouteLabel(text: string, color: string) {
-  const texture = createFlowLabelTexture(text, color);
-  const width = getFlowLabelSpriteWidth(text);
-  const label = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, 0.42),
-    new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, depthWrite: false })
-  );
-  label.renderOrder = 0.94;
-  return label;
 }
 
 function createAnnotationArrowModel(annotation: AnnotationItem) {
@@ -2181,6 +2125,52 @@ function createFlowLabelTexture(text: string, color: string) {
     ctx.font = `bold ${fontSize}px Arial, sans-serif`;
   }
   ctx.fillText(text, 256, 80);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}
+
+function createRouteArrowTexture(text: string, color: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 768;
+  canvas.height = 224;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return new THREE.CanvasTexture(canvas);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "rgba(255,255,255,0.94)";
+  roundRect(ctx, 18, 28, 732, 168, 26);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 10;
+  ctx.stroke();
+
+  ctx.fillStyle = color;
+  const arrowStartX = 470;
+  const arrowY = 112;
+  ctx.beginPath();
+  ctx.moveTo(arrowStartX, 74);
+  ctx.lineTo(620, 74);
+  ctx.lineTo(620, 42);
+  ctx.lineTo(718, arrowY);
+  ctx.lineTo(620, 182);
+  ctx.lineTo(620, 150);
+  ctx.lineTo(arrowStartX, 150);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#0f172a";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  let fontSize = 70;
+  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  while (ctx.measureText(text).width > 400 && fontSize > 28) {
+    fontSize -= 4;
+    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  }
+  ctx.fillText(text, 240, 112);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;

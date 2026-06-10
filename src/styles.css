@@ -563,111 +563,91 @@ textarea {
 
 .item-route-signs {
   position: absolute;
-  inset: 44% 10%;
+  inset: 0;
   pointer-events: none;
 }
 
-.item-route-signs .route-line {
+.item-route-signs .route-arrow-sign {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: var(--route-sign-offset);
   top: 50%;
-  height: 3px;
-  transform: translateY(-50%);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--route-sign-color, #0f766e) 62%, transparent);
-}
-
-.item-route-signs .route-chevron {
-  position: absolute;
-  top: 50%;
-  width: 0;
-  height: 0;
-  border-top: 7px solid transparent;
-  border-bottom: 7px solid transparent;
-  border-left: 12px solid color-mix(in srgb, var(--route-sign-color, #0f766e) 78%, transparent);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22%;
+  align-items: center;
+  width: min(92px, 24%);
+  min-width: 58px;
+  height: 22px;
   transform: translate(-50%, -50%);
-  z-index: 1;
-}
-
-.item-route-signs .route-chevron-a {
-  left: 35%;
-}
-
-.item-route-signs .route-chevron-b {
-  left: 68%;
-}
-
-.item-route-signs.route-reverse .route-chevron,
-.item-route-signs.route-two-way .route-chevron-b {
-  transform: translate(-50%, -50%) rotate(180deg);
-}
-
-.item-route-signs.route-vertical {
-  inset: 10% 42%;
-}
-
-.item-route-signs.route-vertical .route-line {
-  left: 50%;
-  right: auto;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  height: auto;
-  transform: translateX(-50%);
-}
-
-.item-route-signs.route-vertical .route-chevron {
-  left: 50%;
-  border-top: 12px solid var(--route-sign-color, #0f766e);
-  border-right: 7px solid transparent;
-  border-bottom: 0;
-  border-left: 7px solid transparent;
-  transform: translate(-50%, -50%);
-}
-
-.item-route-signs.route-vertical .route-chevron-a {
-  top: 35%;
-}
-
-.item-route-signs.route-vertical .route-chevron-b {
-  top: 68%;
-}
-
-.item-route-signs.route-vertical.route-reverse .route-chevron,
-.item-route-signs.route-vertical.route-two-way .route-chevron-b {
-  transform: translate(-50%, -50%) rotate(180deg);
-}
-
-.item-route-signs .route-label {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  max-width: 72%;
-  overflow: hidden;
-  transform: translate(-50%, -50%);
-  z-index: 2;
-  border: 1px solid color-mix(in srgb, var(--route-sign-color, #0f766e) 72%, transparent);
+  border: 1.5px solid var(--route-sign-color, #0f766e);
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.88);
-  color: var(--route-sign-color, #0f766e);
-  font-size: 9px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.16);
+  color: #0f172a;
+  font-size: 8px;
   font-weight: 900;
   line-height: 1;
-  padding: 3px 6px;
+  overflow: hidden;
+  z-index: 4;
+}
+
+.item-route-signs .route-arrow-sign span {
+  min-width: 0;
+  overflow: hidden;
+  padding-left: 5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.item-route-signs.route-vertical .route-label {
+.item-route-signs .route-arrow-sign::after {
+  width: 0;
+  height: 0;
+  justify-self: end;
+  border-top: 11px solid transparent;
+  border-bottom: 11px solid transparent;
+  border-left: 18px solid var(--route-sign-color, #0f766e);
+  content: "";
+}
+
+.item-route-signs.route-reverse .route-arrow-sign {
+  transform: translate(-50%, -50%) rotate(180deg);
+}
+
+.item-route-signs.route-reverse .route-arrow-sign span {
+  transform: rotate(180deg);
+}
+
+.item-route-signs.route-two-way .route-arrow-sign:nth-child(even) {
+  transform: translate(-50%, -50%) rotate(180deg);
+}
+
+.item-route-signs.route-two-way .route-arrow-sign:nth-child(even) span {
+  transform: rotate(180deg);
+}
+
+.item-route-signs.route-vertical .route-arrow-sign {
+  left: 50%;
+  top: var(--route-sign-offset);
+  width: min(92px, 42%);
   transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.item-route-signs.route-vertical.route-reverse .route-arrow-sign {
+  transform: translate(-50%, -50%) rotate(270deg);
+}
+
+.item-route-signs.route-vertical.route-two-way .route-arrow-sign:nth-child(even) {
+  transform: translate(-50%, -50%) rotate(270deg);
+}
+
+.item-route-signs.route-vertical.route-two-way .route-arrow-sign:nth-child(even) span {
+  transform: none;
 }
 
 .layout-item.has-route-signs .item-icon,
 .layout-item.has-route-signs .item-name,
 .layout-item.has-route-signs .item-size {
   position: relative;
-  z-index: 3;
+  z-index: 1;
 }
 
 .three-preview-wrap {
