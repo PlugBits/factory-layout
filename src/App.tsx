@@ -20,6 +20,7 @@ import { AnnotationProperties } from "./components/AnnotationProperties";
 import { LayoutItemView } from "./components/LayoutItemView";
 import type {
   AnnotationItem,
+  ArrowStyle,
   AnnotationKind,
   Category,
   EdgePair,
@@ -1870,61 +1871,88 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
   const baseColor = new THREE.Color(annotation.color);
   const fillColor = baseColor.clone().lerp(new THREE.Color("#ffffff"), 0.34);
   const edgeColor = baseColor.clone().multiplyScalar(0.62);
-  const fillMaterial = new THREE.MeshBasicMaterial({
+  const style = annotation.flowStyle ?? "band";
+  const bandFillMaterial = new THREE.MeshBasicMaterial({
     color: fillColor,
     transparent: true,
-    opacity: getFloorSignOpacity(annotation),
+    opacity: getFloorSignBandOpacity(annotation),
     side: THREE.DoubleSide,
     depthWrite: false
   });
-  const outlineMaterial = new THREE.LineBasicMaterial({
+  const bandOutlineMaterial = new THREE.LineBasicMaterial({
     color: edgeColor,
     transparent: true,
-    opacity: 0.82,
+    opacity: style === "markers" ? 0.32 : 0.5,
+    depthWrite: false
+  });
+  const markFillMaterial = new THREE.MeshBasicMaterial({
+    color: fillColor,
+    transparent: true,
+    opacity: getFloorSignMarkerOpacity(annotation),
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+  const markOutlineMaterial = new THREE.LineBasicMaterial({
+    color: edgeColor,
+    transparent: true,
+    opacity: 0.88,
     depthWrite: false
   });
   const points = getAnnotationArrowPoints(annotation);
-  const style = annotation.flowStyle ?? "band";
-  const shaftWidth = style === "markers" ? 0.34 : style === "dashed" ? 0.52 : 0.72;
-  const headLength = style === "markers" ? 0.9 : 1.18;
-  const headWidth = style === "markers" ? 1.0 : 1.22;
-  const y = 0.085;
+  const bandWidth = style === "markers" ? 0.46 : style === "dashed" ? 0.56 : 0.72;
+  const markerLength = style === "markers" ? 0.82 : 1.02;
+  const markerWidth = style === "markers" ? 0.72 : 0.86;
+  const headLength = style === "markers" ? 0.96 : 1.12;
+  const headWidth = style === "markers" ? 1.02 : 1.12;
+  const bandY = 0.083;
+  const markY = bandY + 0.018;
 
   for (let index = 0; index < points.length - 1; index += 1) {
     const start = points[index];
     const end = points[index + 1];
-    const isLast = index === points.length - 2;
     const dx = end.x - start.x;
     const dz = end.y - start.y;
     const length = Math.hypot(dx, dz);
     if (length < 0.05) continue;
 
-    if (isLast) {
-      group.add(createFloorSignArrowHead(start, end, headLength, headWidth, y + 0.003, fillMaterial, outlineMaterial));
-    }
+    addFloorSignBand(group, start, end, bandWidth, bandY, style, bandFillMaterial, bandOutlineMaterial);
   }
 
   if (annotation.showMarkers !== false && style !== "dashed") {
-    for (const marker of getAnnotationArrowMarkerPolygons(annotation, style === "markers" ? 1.8 : 2.45, shaftWidth * 1.28, shaftWidth * 1.02)) {
-      group.add(createFloorSignMark(marker, y + 0.006, fillMaterial, outlineMaterial));
+    for (const marker of getAnnotationArrowMarkerPolygons(annotation, style === "markers" ? 2.25 : 3.0, markerLength, markerWidth)) {
+      group.add(createFloorSignMark(marker, markY, markFillMaterial, markOutlineMaterial, 0.78));
     }
-    for (const marker of getAnnotationCornerMarkerPolygons(annotation, shaftWidth * 1.36, shaftWidth * 1.1)) {
-      group.add(createFloorSignMark(marker, y + 0.009, fillMaterial, outlineMaterial));
+  }
+
+  const lastStart = points[points.length - 2];
+  const lastEnd = points[points.length - 1];
+  if (lastStart && lastEnd) {
+    if (style === "dashed" || annotation.showMarkers !== false) {
+      group.add(createFloorSignArrowHead(lastStart, lastEnd, headLength, headWidth, markY + 0.004, markFillMaterial, markOutlineMaterial));
     }
   }
 
   if (annotation.label.trim()) {
-    addFloorLabels(group, annotation, y + 0.008, edgeColor);
+    addFloorLabels(group, annotation, markY + 0.012, edgeColor);
   }
 
   return group;
 }
 
-function getFloorSignOpacity(annotation: AnnotationItem) {
+function getFloorSignBandOpacity(annotation: AnnotationItem) {
   const style = annotation.flowStyle ?? "band";
-  if (style === "markers") return 0.26;
-  if ((annotation.flowType ?? "material") === "forklift") return 0.34;
-  return 0.3;
+  if (style === "markers") return 0.12;
+  if (style === "dashed") return 0.18;
+  if ((annotation.flowType ?? "material") === "forklift") return 0.2;
+  return 0.16;
+}
+
+function getFloorSignMarkerOpacity(annotation: AnnotationItem) {
+  const style = annotation.flowStyle ?? "band";
+  if (style === "markers") return 0.38;
+  if (style === "dashed") return 0.34;
+  if ((annotation.flowType ?? "material") === "forklift") return 0.36;
+  return 0.32;
 }
 
 function createFloorSignArrowHead(start: { x: number; y: number }, end: { x: number; y: number }, length: number, width: number, y: number, fillMaterial: THREE.Material, outlineMaterial: THREE.Material) {
@@ -1945,6 +1973,31 @@ function createFloorSignArrowHead(start: { x: number; y: number }, end: { x: num
   return createFloorSignMark(polygon, y, fillMaterial, outlineMaterial);
 }
 
+function addFloorSignBand(group: THREE.Group, start: { x: number; y: number }, end: { x: number; y: number }, width: number, y: number, style: ArrowStyle, fillMaterial: THREE.Material, outlineMaterial: THREE.Material) {
+  const dx = end.x - start.x;
+  const dz = end.y - start.y;
+  const length = Math.hypot(dx, dz);
+  if (length < 0.05) return;
+
+  if (style !== "dashed") {
+    group.add(createFloorSignMark(makeSegmentPolygon(start, end, width), y, fillMaterial, outlineMaterial, 0.42));
+    return;
+  }
+
+  const ux = dx / length;
+  const uz = dz / length;
+  const dashLength = 1.45;
+  const gapLength = 0.55;
+  for (let cursor = 0; cursor < length - 0.12; cursor += dashLength + gapLength) {
+    const dashStartDistance = cursor;
+    const dashEndDistance = Math.min(length, cursor + dashLength);
+    if (dashEndDistance - dashStartDistance < 0.22) continue;
+    const dashStart = { x: start.x + ux * dashStartDistance, y: start.y + uz * dashStartDistance };
+    const dashEnd = { x: start.x + ux * dashEndDistance, y: start.y + uz * dashEndDistance };
+    group.add(createFloorSignMark(makeSegmentPolygon(dashStart, dashEnd, width), y, fillMaterial, outlineMaterial, 0.42));
+  }
+}
+
 function createFloorSignPolygon(points: Array<{ x: number; y: number }>, y: number, material: THREE.Material) {
   const shape = new THREE.Shape();
   points.forEach((point, index) => {
@@ -1959,15 +2012,17 @@ function createFloorSignPolygon(points: Array<{ x: number; y: number }>, y: numb
   return mesh;
 }
 
-function createFloorSignMark(points: Array<{ x: number; y: number }>, y: number, fillMaterial: THREE.Material, outlineMaterial: THREE.Material) {
+function createFloorSignMark(points: Array<{ x: number; y: number }>, y: number, fillMaterial: THREE.Material, outlineMaterial: THREE.Material, renderOrder = 0.5) {
   const group = new THREE.Group();
-  group.add(createFloorSignPolygon(points, y, fillMaterial));
+  const polygon = createFloorSignPolygon(points, y, fillMaterial);
+  polygon.renderOrder = renderOrder;
+  group.add(polygon);
   const outlinePoints = [...points, points[0]].map((point) => new THREE.Vector3(point.x, y + 0.004, point.y));
   const outline = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(outlinePoints),
     outlineMaterial
   );
-  outline.renderOrder = 0.7;
+  outline.renderOrder = renderOrder + 0.18;
   group.add(outline);
   return group;
 }
@@ -1999,7 +2054,7 @@ function addFloorLabels(group: THREE.Group, annotation: AnnotationItem, y: numbe
       label.position.set(start.x + dx * t, y, start.y + dz * t);
       label.rotation.x = -Math.PI / 2;
       label.rotation.z = -angle;
-      label.renderOrder = 0.6;
+      label.renderOrder = 0.92;
       group.add(label);
     }
   }
@@ -2077,37 +2132,6 @@ function getAnnotationArrowMarkerPolygons(annotation: AnnotationItem, spacing: n
       ]);
     }
   }
-  return markers;
-}
-
-function getAnnotationCornerMarkerPolygons(annotation: AnnotationItem, length: number, width: number) {
-  const points = getAnnotationArrowPoints(annotation);
-  const markers: Array<Array<{ x: number; y: number }>> = [];
-  if (points.length < 3) return markers;
-
-  for (let index = 1; index < points.length - 1; index += 1) {
-    const bend = points[index];
-    const next = points[index + 1];
-    const dx = next.x - bend.x;
-    const dz = next.y - bend.y;
-    const segmentLength = Math.hypot(dx, dz);
-    if (segmentLength < 0.5) continue;
-
-    const ux = dx / segmentLength;
-    const uz = dz / segmentLength;
-    const px = -uz;
-    const pz = ux;
-    const cx = bend.x + ux * Math.min(0.75, segmentLength * 0.42);
-    const cy = bend.y + uz * Math.min(0.75, segmentLength * 0.42);
-    const tip = { x: cx + ux * length * 0.52, y: cy + uz * length * 0.52 };
-    const base = { x: cx - ux * length * 0.48, y: cy - uz * length * 0.48 };
-    markers.push([
-      tip,
-      { x: base.x + px * width / 2, y: base.y + pz * width / 2 },
-      { x: base.x - px * width / 2, y: base.y - pz * width / 2 }
-    ]);
-  }
-
   return markers;
 }
 
