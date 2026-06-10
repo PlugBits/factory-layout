@@ -1,5 +1,5 @@
-import { Eye, EyeOff, MessageSquare, MoveRight, Trash2 } from "lucide-react";
-import type { AnnotationItem, AnnotationKind } from "../types";
+import { CornerDownRight, Eye, EyeOff, MessageSquare, MoveRight, Trash2 } from "lucide-react";
+import type { AnnotationItem, AnnotationKind, ArrowShape } from "../types";
 
 type AnnotationLayerProps = {
   annotations: AnnotationItem[];
@@ -13,9 +13,28 @@ type AnnotationLayerProps = {
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onStartMove: (id: string, x: number, y: number) => void;
+  onStartEndpointMove: (id: string, endpoint: "start" | "end") => void;
   onMove: (id: string, x: number, y: number) => void;
   onEndMove: () => void;
 };
+
+export const annotationColors = [
+  { label: "Red", value: "#dc2626" },
+  { label: "Orange", value: "#ea580c" },
+  { label: "Yellow", value: "#ca8a04" },
+  { label: "Green", value: "#16a34a" },
+  { label: "Teal", value: "#0f766e" },
+  { label: "Blue", value: "#2563eb" },
+  { label: "Violet", value: "#7c3aed" },
+  { label: "Slate", value: "#334155" }
+];
+
+export const arrowShapeOptions: Array<{ label: string; value: ArrowShape }> = [
+  { label: "Straight", value: "straight" },
+  { label: "Elbow", value: "elbow" },
+  { label: "Left turn", value: "left-turn" },
+  { label: "Right turn", value: "right-turn" }
+];
 
 export function AnnotationLayer({
   annotations,
@@ -29,6 +48,7 @@ export function AnnotationLayer({
   onSelect,
   onDelete,
   onStartMove,
+  onStartEndpointMove,
   onMove,
   onEndMove
 }: AnnotationLayerProps) {
@@ -85,28 +105,23 @@ export function AnnotationLayer({
           ))}
         </defs>
         {annotations.filter((annotation) => annotation.visible && annotation.kind === "arrow").map((annotation) => (
-          <g key={annotation.id} className={annotation.id === selectedId ? "annotation-selected" : ""}>
-            <line
-              x1={annotation.x1 * pxPerMeter}
-              y1={annotation.y1 * pxPerMeter}
-              x2={annotation.x2 * pxPerMeter}
-              y2={annotation.y2 * pxPerMeter}
-              stroke={annotation.color}
-              markerEnd={`url(#arrow-head-${annotation.id})`}
-            />
-          </g>
+          <path
+            key={annotation.id}
+            className={annotation.id === selectedId ? "annotation-selected" : ""}
+            d={getArrowPath(annotation, pxPerMeter)}
+            stroke={annotation.color}
+            markerEnd={`url(#arrow-head-${annotation.id})`}
+          />
         ))}
       </svg>
       {annotations.filter((annotation) => annotation.visible).map((annotation) => {
-        const labelX = annotation.kind === "arrow" ? (annotation.x1 + annotation.x2) / 2 : annotation.x1;
-        const labelY = annotation.kind === "arrow" ? (annotation.y1 + annotation.y2) / 2 : annotation.y1;
-
+        const labelPoint = getAnnotationLabelPoint(annotation);
         return (
           <button
             key={annotation.id}
             type="button"
             className={`annotation-hit annotation-${annotation.kind}${annotation.id === selectedId ? " selected" : ""}`}
-            style={{ left: labelX * pxPerMeter, top: labelY * pxPerMeter, color: annotation.color }}
+            style={{ left: labelPoint.x * pxPerMeter, top: labelPoint.y * pxPerMeter, color: annotation.color }}
             onPointerDown={(event) => {
               if (event.button !== 0) return;
               event.stopPropagation();
@@ -157,6 +172,47 @@ export function AnnotationLayer({
           </button>
         );
       })}
+      {annotations.filter((annotation) => annotation.visible && annotation.kind === "arrow" && annotation.id === selectedId).flatMap((annotation) => (
+        ([
+          { endpoint: "start" as const, x: annotation.x1, y: annotation.y1 },
+          { endpoint: "end" as const, x: annotation.x2, y: annotation.y2 }
+        ]).map((handle) => (
+          <button
+            key={`${annotation.id}-${handle.endpoint}`}
+            type="button"
+            className={`annotation-endpoint annotation-endpoint-${handle.endpoint}`}
+            style={{ left: handle.x * pxPerMeter, top: handle.y * pxPerMeter, color: annotation.color }}
+            aria-label={`${handle.endpoint} point`}
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              event.stopPropagation();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              onSelect(annotation.id);
+              onStartEndpointMove(annotation.id, handle.endpoint);
+            }}
+            onPointerMove={(event) => {
+              if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+              event.stopPropagation();
+              const point = getBoardPoint(event);
+              onMove(annotation.id, point.x, point.y);
+            }}
+            onPointerUp={(event) => {
+              event.stopPropagation();
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+              onEndMove();
+            }}
+            onPointerCancel={(event) => {
+              event.stopPropagation();
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+              onEndMove();
+            }}
+          />
+        ))
+      ))}
     </div>
   );
 }
@@ -165,35 +221,20 @@ type AnnotationPanelProps = {
   annotations: AnnotationItem[];
   layerVisible: boolean;
   activeTool: AnnotationKind | null;
-  selectedAnnotation: AnnotationItem | null;
+  selectedAnnotationId: string | null;
   onToggleLayer: () => void;
   onSetTool: (tool: AnnotationKind | null) => void;
   onSelect: (id: string | null) => void;
-  onUpdate: (id: string, patch: Partial<AnnotationItem>) => void;
-  onDelete: (id: string) => void;
 };
-
-const annotationColors = [
-  { label: "Red", value: "#dc2626" },
-  { label: "Orange", value: "#ea580c" },
-  { label: "Yellow", value: "#ca8a04" },
-  { label: "Green", value: "#16a34a" },
-  { label: "Teal", value: "#0f766e" },
-  { label: "Blue", value: "#2563eb" },
-  { label: "Violet", value: "#7c3aed" },
-  { label: "Slate", value: "#334155" }
-];
 
 export function AnnotationPanel({
   annotations,
   layerVisible,
   activeTool,
-  selectedAnnotation,
+  selectedAnnotationId,
   onToggleLayer,
   onSetTool,
-  onSelect,
-  onUpdate,
-  onDelete
+  onSelect
 }: AnnotationPanelProps) {
   return (
     <section className="panel annotation-panel">
@@ -215,41 +256,46 @@ export function AnnotationPanel({
           <button
             key={annotation.id}
             type="button"
-            className={annotation.id === selectedAnnotation?.id ? "selected" : ""}
+            className={annotation.id === selectedAnnotationId ? "selected" : ""}
             onClick={() => onSelect(annotation.id)}
           >
             {annotation.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+            {annotation.kind === "arrow" ? <CornerDownRight size={14} /> : <MessageSquare size={14} />}
             <span>{annotation.label}</span>
           </button>
         )) : (
           <p>Arrow is added by dragging on the board. Note is added by clicking.</p>
         )}
       </div>
-      {selectedAnnotation ? (
-        <div className="annotation-fields">
-          <label>Label<input value={selectedAnnotation.label} onChange={(event) => onUpdate(selectedAnnotation.id, { label: event.target.value })} /></label>
-          <div className="annotation-color-block">
-            <div className="field-title">Color</div>
-            <div className="annotation-color-grid">
-              {annotationColors.map((color) => (
-                <button
-                  key={color.value}
-                  type="button"
-                  className={selectedAnnotation.color.toLowerCase() === color.value ? "color-swatch active" : "color-swatch"}
-                  title={color.label}
-                  style={{ backgroundColor: color.value }}
-                  onClick={() => onUpdate(selectedAnnotation.id, { color: color.value })}
-                />
-              ))}
-            </div>
-          </div>
-          <label className="inline-toggle">
-            <input type="checkbox" checked={selectedAnnotation.visible} onChange={(event) => onUpdate(selectedAnnotation.id, { visible: event.target.checked })} />
-            Visible
-          </label>
-          <button type="button" onClick={() => onDelete(selectedAnnotation.id)}><Trash2 size={16} />Delete</button>
-        </div>
-      ) : null}
     </section>
   );
+}
+
+function getAnnotationLabelPoint(annotation: AnnotationItem) {
+  if (annotation.kind === "note") return { x: annotation.x1, y: annotation.y1 };
+  if ((annotation.shape ?? "straight") === "straight") {
+    return { x: (annotation.x1 + annotation.x2) / 2, y: (annotation.y1 + annotation.y2) / 2 };
+  }
+  const bend = getArrowBend(annotation);
+  return { x: bend.x, y: bend.y };
+}
+
+function getArrowPath(annotation: AnnotationItem, pxPerMeter: number) {
+  const x1 = annotation.x1 * pxPerMeter;
+  const y1 = annotation.y1 * pxPerMeter;
+  const x2 = annotation.x2 * pxPerMeter;
+  const y2 = annotation.y2 * pxPerMeter;
+  if ((annotation.shape ?? "straight") === "straight") return `M ${x1} ${y1} L ${x2} ${y2}`;
+
+  const bend = getArrowBend(annotation);
+  return `M ${x1} ${y1} L ${bend.x * pxPerMeter} ${bend.y * pxPerMeter} L ${x2} ${y2}`;
+}
+
+function getArrowBend(annotation: AnnotationItem) {
+  const shape = annotation.shape ?? "straight";
+  if (shape === "left-turn") return { x: annotation.x1, y: annotation.y2 };
+  if (shape === "right-turn") return { x: annotation.x2, y: annotation.y1 };
+
+  const horizontalFirst = Math.abs(annotation.x2 - annotation.x1) >= Math.abs(annotation.y2 - annotation.y1);
+  return horizontalFirst ? { x: annotation.x2, y: annotation.y1 } : { x: annotation.x1, y: annotation.y2 };
 }

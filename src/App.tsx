@@ -16,6 +16,7 @@ import {
   type Language
 } from "./i18n";
 import { AnnotationLayer, AnnotationPanel } from "./components/AnnotationLayer";
+import { AnnotationProperties } from "./components/AnnotationProperties";
 import { LayoutItemView } from "./components/LayoutItemView";
 import type {
   AnnotationItem,
@@ -151,7 +152,7 @@ function App() {
   const [annotationLayerVisible, setAnnotationLayerVisible] = useState(() => draftProject?.annotationLayerVisible ?? true);
   const [annotationTool, setAnnotationTool] = useState<AnnotationKind | null>(null);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
-  const [annotationDrag, setAnnotationDrag] = useState<{ id: string; startX: number; startY: number; original: AnnotationItem } | null>(null);
+  const [annotationDrag, setAnnotationDrag] = useState<{ id: string; mode: "move" | "start" | "end"; startX: number; startY: number; original: AnnotationItem } | null>(null);
   const [undoStack, setUndoStack] = useState<ProjectSnapshot[]>([]);
   const [redoStack, setRedoStack] = useState<ProjectSnapshot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -318,7 +319,8 @@ function App() {
         x2,
         y2,
         color: "#dc2626",
-        visible: true
+        visible: true,
+        shape: "straight"
       }
     ]);
     setSelectedAnnotationId(id);
@@ -337,15 +339,27 @@ function App() {
     const annotation = annotations.find((entry) => entry.id === id);
     if (!annotation) return;
     setSelectedAnnotationId(id);
+    setSelectedId(null);
+    setSecondSelectedId(null);
     annotationDragStartSnapshotRef.current = makeProjectSnapshot();
-    setAnnotationDrag({ id, startX: rawX, startY: rawY, original: annotation });
+    setAnnotationDrag({ id, mode: "move", startX: rawX, startY: rawY, original: annotation });
+  };
+
+  const startAnnotationEndpointMove = (id: string, endpoint: "start" | "end") => {
+    const annotation = annotations.find((entry) => entry.id === id);
+    if (!annotation) return;
+    setSelectedAnnotationId(id);
+    setSelectedId(null);
+    setSecondSelectedId(null);
+    annotationDragStartSnapshotRef.current = makeProjectSnapshot();
+    setAnnotationDrag({ id, mode: endpoint, startX: 0, startY: 0, original: annotation });
   };
 
   const moveAnnotation = (id: string, rawX: number, rawY: number) => {
     if (!annotationDrag || annotationDrag.id !== id) return;
-    const dx = rawX - annotationDrag.startX;
-    const dy = rawY - annotationDrag.startY;
-    const next = moveAnnotationBy(annotationDrag.original, dx, dy, factory.width, factory.depth);
+    const next = annotationDrag.mode === "move"
+      ? moveAnnotationBy(annotationDrag.original, rawX - annotationDrag.startX, rawY - annotationDrag.startY, factory.width, factory.depth)
+      : moveAnnotationEndpoint(annotationDrag.original, annotationDrag.mode, rawX, rawY, factory.width, factory.depth, factory.grid);
     setAnnotations((current) => current.map((annotation) => annotation.id === id ? next : annotation));
   };
 
@@ -397,6 +411,7 @@ function App() {
       }
     ]);
     setSelectedId(id);
+    setSelectedAnnotationId(null);
   };
 
   const updateItem = (id: string, patch: Partial<LayoutItem>, record = true) => {
@@ -567,6 +582,7 @@ function App() {
     const rect = boardRef.current?.getBoundingClientRect();
     if (!rect) return;
     setSelectedId(item.id);
+    setSelectedAnnotationId(null);
     dragStartSnapshotRef.current = makeProjectSnapshot();
     event.currentTarget.setPointerCapture(event.pointerId);
     setDrag({
@@ -680,16 +696,20 @@ function App() {
           annotations={annotations}
           layerVisible={annotationLayerVisible}
           activeTool={annotationTool}
-          selectedAnnotation={selectedAnnotation}
+          selectedAnnotationId={selectedAnnotationId}
           onToggleLayer={toggleAnnotationLayer}
           onSetTool={(tool) => {
             setWaypointMode(false);
             setAnnotationTool(tool);
             if (tool) setAnnotationLayerVisible(true);
           }}
-          onSelect={setSelectedAnnotationId}
-          onUpdate={updateAnnotation}
-          onDelete={deleteAnnotation}
+          onSelect={(id) => {
+            setSelectedAnnotationId(id);
+            if (id) {
+              setSelectedId(null);
+              setSecondSelectedId(null);
+            }
+          }}
         />
 
         <details className="panel factory-panel">
@@ -848,9 +868,14 @@ function App() {
                   onStartArrow={startAnnotationArrow}
                   onFinishArrow={finishAnnotationArrow}
                   onAddNote={addAnnotationNote}
-                  onSelect={setSelectedAnnotationId}
+                  onSelect={(id) => {
+                    setSelectedAnnotationId(id);
+                    setSelectedId(null);
+                    setSecondSelectedId(null);
+                  }}
                   onDelete={deleteAnnotation}
                   onStartMove={startAnnotationMove}
+                  onStartEndpointMove={startAnnotationEndpointMove}
                   onMove={moveAnnotation}
                   onEndMove={endAnnotationMove}
                 />
@@ -925,6 +950,14 @@ function App() {
           )}
 
           <aside className="properties">
+            {selectedAnnotation ? (
+              <AnnotationProperties
+                annotation={selectedAnnotation}
+                onUpdate={updateAnnotation}
+                onDelete={deleteAnnotation}
+              />
+            ) : (
+              <>
             <div className="panel-title">{text("placedItems")}</div>
             <div className="placed-list" ref={placedListRef}>
               {items.length ? items.map((item, index) => (
@@ -937,7 +970,8 @@ function App() {
                     if (event.ctrlKey || event.metaKey) {
                       if (item.id !== selectedId) setSecondSelectedId((prev) => prev === item.id ? null : item.id);
                     } else {
-                      setSelectedId(item.id);
+                          setSelectedId(item.id);
+                          setSelectedAnnotationId(null);
                     }
                   }}
                 >
@@ -1046,6 +1080,8 @@ function App() {
                 ) : (
                   <p>{text("selectEquipment")}</p>
                 )}
+              </>
+            )}
               </>
             )}
           </aside>
@@ -1443,6 +1479,12 @@ function moveAnnotationBy(annotation: AnnotationItem, dx: number, dy: number, ma
     x2: Number((annotation.x2 + clampedDx).toFixed(3)),
     y2: Number((annotation.y2 + clampedDy).toFixed(3))
   };
+}
+
+function moveAnnotationEndpoint(annotation: AnnotationItem, endpoint: "start" | "end", rawX: number, rawY: number, maxX: number, maxY: number, grid: number) {
+  const x = snap(clamp(rawX, 0, maxX), grid);
+  const y = snap(clamp(rawY, 0, maxY), grid);
+  return endpoint === "start" ? { ...annotation, x1: x, y1: y } : { ...annotation, x2: x, y2: y };
 }
 
 function clamp(value: number, min: number, max: number) {

@@ -6,6 +6,7 @@ export type EdgePair = "right-left" | "left-right" | "cx-cx" | "bottom-top" | "t
 export type Waypoint = { id: string; x: number; y: number };
 
 export type AnnotationKind = "arrow" | "note";
+export type ArrowShape = "straight" | "elbow" | "left-turn" | "right-turn";
 
 export type AnnotationItem = {
   id: string;
@@ -17,6 +18,7 @@ export type AnnotationItem = {
   y2: number;
   color: string;
   visible: boolean;
+  shape?: ArrowShape;
 };
 
 export type EquipmentTemplate = {
