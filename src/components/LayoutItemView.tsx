@@ -7,7 +7,6 @@ type LayoutItemViewProps = {
   secondSelected: boolean;
   area: boolean;
   pxPerMeter: number;
-  displayName: string;
   onPointerDown: (event: React.PointerEvent) => void;
   onDoubleClick: () => void;
 };
@@ -18,7 +17,6 @@ export function LayoutItemView({
   secondSelected,
   area,
   pxPerMeter,
-  displayName,
   onPointerDown,
   onDoubleClick
 }: LayoutItemViewProps) {
@@ -64,8 +62,6 @@ export function LayoutItemView({
         </div>
       ) : null}
       <div className="item-icon">{item.icon}</div>
-      <div className="item-name">{displayName}</div>
-      <div className="item-size">{item.width} x {item.depth} x {item.height}m</div>
     </div>
   );
 }

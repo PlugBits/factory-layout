@@ -86,7 +86,13 @@ const itemColorPalette = [
   "#0891b2",
   "#64748b",
   "#78716c",
-  "#111827"
+  "#111827",
+  "#f97316",
+  "#f59e0b",
+  "#84cc16",
+  "#06b6d4",
+  "#ec4899",
+  "#f43f5e"
 ];
 
 const wallSides: WallSide[] = ["north", "east", "south", "west"];
@@ -144,6 +150,52 @@ function downloadBlob(blob: Blob, fileName: string) {
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function hexToRgb(color: string) {
+  const hex = color.replace("#", "");
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return { r: 15, g: 118, b: 110 };
+  return {
+    r: parseInt(hex.slice(0, 2), 16),
+    g: parseInt(hex.slice(2, 4), 16),
+    b: parseInt(hex.slice(4, 6), 16)
+  };
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+  const toByte = (value: number) => clamp(Math.round(value || 0), 0, 255).toString(16).padStart(2, "0");
+  return `#${toByte(r)}${toByte(g)}${toByte(b)}`;
+}
+
+function ColorPicker({ title, value, onChange }: { title: string; value: string; onChange: (color: string) => void }) {
+  const rgb = hexToRgb(value);
+  const updateRgb = (channel: "r" | "g" | "b", nextValue: number) => {
+    onChange(rgbToHex(channel === "r" ? nextValue : rgb.r, channel === "g" ? nextValue : rgb.g, channel === "b" ? nextValue : rgb.b));
+  };
+
+  return (
+    <div className="color-panel">
+      <div className="field-title">{title}</div>
+      <div className="color-grid">
+        {itemColorPalette.map((color) => (
+          <button
+            key={color}
+            type="button"
+            className={value.toLowerCase() === color.toLowerCase() ? "color-swatch active" : "color-swatch"}
+            style={{ backgroundColor: color }}
+            onClick={() => onChange(color)}
+            aria-label={`${title} ${color}`}
+          />
+        ))}
+      </div>
+      <div className="rgb-color-controls">
+        <span>More color</span>
+        <label>R<input type="number" min={0} max={255} value={rgb.r} onChange={(event) => updateRgb("r", Number(event.target.value))} /></label>
+        <label>G<input type="number" min={0} max={255} value={rgb.g} onChange={(event) => updateRgb("g", Number(event.target.value))} /></label>
+        <label>B<input type="number" min={0} max={255} value={rgb.b} onChange={(event) => updateRgb("b", Number(event.target.value))} /></label>
+      </div>
+    </div>
+  );
 }
 
 function App() {
@@ -950,7 +1002,6 @@ function App() {
                     secondSelected={item.id === secondSelectedId}
                     area={isAreaItem(item)}
                     pxPerMeter={pxPerMeter}
-                    displayName={displayItemName(item)}
                     onPointerDown={(event) => startDrag(event, item)}
                     onDoubleClick={() => setSizeEditId(item.id)}
                   />
@@ -1087,8 +1138,8 @@ function App() {
                       {[0, 90, 180, 270].map((angle) => <option key={angle} value={angle}>{angle}°</option>)}
                     </select></label>
                     {selectedItem.templateId === "forklift-aisle" ? (
-                      <div className="route-sign-panel">
-                        <div className="field-title">Forklift Route Signs</div>
+                      <details className="route-sign-panel">
+                        <summary>Floor Route Signs</summary>
                         <label>Traffic direction
                           <select
                             value={selectedItem.trafficDirection ?? "none"}
@@ -1110,20 +1161,11 @@ function App() {
                             onChange={(event) => updateItem(selectedItem.id, { floorLabel: event.target.value })}
                           />
                         </label>
-                        <div className="color-panel compact">
-                          <div className="field-title">Arrow color</div>
-                          <div className="color-grid">
-                            {itemColorPalette.map((color) => (
-                              <button
-                                key={color}
-                                className={(selectedItem.routeSignColor ?? "#0f766e").toLowerCase() === color.toLowerCase() ? "color-swatch active" : "color-swatch"}
-                                style={{ backgroundColor: color }}
-                                onClick={() => updateItem(selectedItem.id, { routeSignColor: color })}
-                                aria-label={`Arrow color ${color}`}
-                              />
-                            ))}
-                          </div>
-                        </div>
+                        <ColorPicker
+                          title="Arrow color"
+                          value={selectedItem.routeSignColor ?? "#0f766e"}
+                          onChange={(color) => updateItem(selectedItem.id, { routeSignColor: color })}
+                        />
                         <label className="inline-toggle">
                           <input
                             type="checkbox"
@@ -1132,22 +1174,13 @@ function App() {
                           />
                           Show floor signs
                         </label>
-                      </div>
+                      </details>
                     ) : null}
-                    <div className="color-panel">
-                      <div className="field-title">{text("color")}</div>
-                      <div className="color-grid">
-                        {itemColorPalette.map((color) => (
-                          <button
-                            key={color}
-                            className={selectedItem.color.toLowerCase() === color.toLowerCase() ? "color-swatch active" : "color-swatch"}
-                            style={{ backgroundColor: color }}
-                            onClick={() => updateItem(selectedItem.id, { color })}
-                            aria-label={`${text("color")} ${color}`}
-                          />
-                        ))}
-                      </div>
-                    </div>
+                    <ColorPicker
+                      title={text("color")}
+                      value={selectedItem.color}
+                      onChange={(color) => updateItem(selectedItem.id, { color })}
+                    />
                     <p className="section-desc" style={{ marginTop: 8 }}>{text("twoPointHint")}</p>
                   </>
                 ) : (
