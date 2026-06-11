@@ -2052,6 +2052,8 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
 
   // Band width by style
   const bandWidth = style === "markers" ? 0.18 : style === "dashed" ? 0.28 : 0.38;
+  const headWidth = bandWidth * 2.55;
+  const headLength = headWidth * 1.08;
 
   const bandMat = new THREE.MeshLambertMaterial({
     color: baseColor,
@@ -2062,20 +2064,35 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
   for (let i = 0; i < points.length - 1; i++) {
     const start = points[i];
     const end = points[i + 1];
-    addFlowBandSegment(group, start, end, y, bandThickness, bandWidth, bandMat, style);
+    const isLast = i === points.length - 2;
+    const bandEnd = isLast ? trimSegmentEnd(start, end, headLength * 0.92) : end;
+    addFlowBandSegment(group, start, bandEnd, y, bandThickness, bandWidth, bandMat, style);
   }
 
-  // Arrow head — flat chevron lying on floor
+  // Arrow head: low triangular prism, with the band trimmed back before it.
   const lastStart = points[points.length - 2];
   const lastEnd = points[points.length - 1];
   if (lastStart && lastEnd) {
-    group.add(createFlowBandArrowHead(lastStart, lastEnd, y + 0.002, bandWidth * 2.2, baseColor));
+    group.add(createFlowBandArrowHead(lastStart, lastEnd, y, headWidth, headLength, bandThickness * 1.8, baseColor));
   }
 
   // Interval signboards along path
   addFlowSignboards(group, annotation, points, y + 0.01, baseColor);
 
   return group;
+}
+
+function trimSegmentEnd(start: { x: number; y: number }, end: { x: number; y: number }, trimDistance: number) {
+  const dx = end.x - start.x;
+  const dz = end.y - start.y;
+  const length = Math.hypot(dx, dz);
+  if (length <= trimDistance + 0.12) {
+    const t = Math.max(0.18, Math.min(0.82, (length - 0.12) / Math.max(length, 1)));
+    return { x: start.x + dx * t, y: start.y + dz * t };
+  }
+  const ux = dx / length;
+  const uz = dz / length;
+  return { x: end.x - ux * trimDistance, y: end.y - uz * trimDistance };
 }
 
 function addFlowBandSegment(
@@ -2134,7 +2151,9 @@ function createFlowBandArrowHead(
   start: { x: number; y: number },
   end: { x: number; y: number },
   y: number,
-  size: number,
+  width: number,
+  length: number,
+  height: number,
   color: THREE.Color
 ) {
   const dx = end.x - start.x;
@@ -2142,35 +2161,51 @@ function createFlowBandArrowHead(
   const len = Math.hypot(dx, dz) || 1;
   const ux = dx / len;
   const uz = dz / len;
-  const half = size / 2;
-  const depth = size * 1.1;
+  const half = width / 2;
 
-  // Build triangle vertices directly in world XZ coordinates
-  // tip at end, base centered behind it
   const tipX = end.x;
   const tipZ = end.y;
-  const baseX = end.x - ux * depth;
-  const baseZ = end.y - uz * depth;
-  // perpendicular
+  const baseX = end.x - ux * length;
+  const baseZ = end.y - uz * length;
   const px = -uz;
   const pz = ux;
 
-  const v0x = tipX,          v0z = tipZ;
-  const v1x = baseX + px * half, v1z = baseZ + pz * half;
-  const v2x = baseX - px * half, v2z = baseZ - pz * half;
-
-  // Both winding orders so the triangle is always visible regardless of camera angle
+  const bottomY = y;
+  const topY = y + height;
+  const top = [
+    [tipX, topY, tipZ],
+    [baseX + px * half, topY, baseZ + pz * half],
+    [baseX - px * half, topY, baseZ - pz * half],
+  ];
+  const bottom = [
+    [tipX, bottomY, tipZ],
+    [baseX + px * half, bottomY, baseZ + pz * half],
+    [baseX - px * half, bottomY, baseZ - pz * half],
+  ];
   const positions = new Float32Array([
-    v0x, y, v0z,  v1x, y, v1z,  v2x, y, v2z,
-    v0x, y, v0z,  v2x, y, v2z,  v1x, y, v1z,
+    ...top[0], ...top[1], ...top[2],
+    ...bottom[0], ...bottom[2], ...bottom[1],
+    ...top[0], ...bottom[0], ...bottom[1], ...top[0], ...bottom[1], ...top[1],
+    ...top[1], ...bottom[1], ...bottom[2], ...top[1], ...bottom[2], ...top[2],
+    ...top[2], ...bottom[2], ...bottom[0], ...top[2], ...bottom[0], ...top[0],
   ]);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geo.computeVertexNormals();
 
-  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 });
+  const group = new THREE.Group();
+  const mat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.96 });
   const head = new THREE.Mesh(geo, mat);
-  head.renderOrder = 1.2;
-  return head;
+  head.renderOrder = 1.22;
+  group.add(head);
+
+  const edge = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geo),
+    new THREE.LineBasicMaterial({ color: color.clone().multiplyScalar(0.58), transparent: true, opacity: 0.7 })
+  );
+  edge.renderOrder = 1.24;
+  group.add(edge);
+  return group;
 }
 
 function addFlowSignboards(
