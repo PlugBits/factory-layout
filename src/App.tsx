@@ -26,6 +26,7 @@ import type {
   CustomTemplate,
   EdgePair,
   EquipmentTemplate,
+  EquipmentTemplateType,
   LayoutItem,
   OrbitTargetMode,
   ProjectFile,
@@ -112,6 +113,7 @@ const trafficDirectionOptions: Array<{ label: string; value: TrafficDirection }>
 const defaultCustomTemplateDraft: Omit<EquipmentTemplate, "id"> = {
   name: "Custom Equipment",
   category: "utility",
+  templateType: "box",
   width: 1,
   depth: 1,
   height: 1,
@@ -121,6 +123,15 @@ const defaultCustomTemplateDraft: Omit<EquipmentTemplate, "id"> = {
 };
 
 type TemplateGroup = Category | "custom";
+
+const templateTypeLabels: Record<Language, Record<EquipmentTemplateType, string>> = {
+  ja: { box: "四角要素", area: "床エリア", range: "枠レンジ" },
+  en: { box: "Box element", area: "Floor area", range: "Range frame" },
+  zh: { box: "方块元素", area: "地面区域", range: "范围框" },
+  id: { box: "Elemen kotak", area: "Area lantai", range: "Bingkai rentang" },
+  th: { box: "กล่อง", area: "พื้นที่พื้น", range: "กรอบช่วง" },
+  vi: { box: "Khối hộp", area: "Vùng sàn", range: "Khung vùng" }
+};
 
 function makeId(prefix: string) {
   return `${prefix}-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`;
@@ -514,6 +525,7 @@ function App() {
         depth: template.depth,
         height: template.height,
         elevation: template.elevation ?? 0,
+        templateType: template.templateType,
         rotation: 0,
         color: template.color,
         icon: template.icon
@@ -806,6 +818,7 @@ function App() {
       custom: true,
       name,
       category: customTemplateDraft.category,
+      templateType: customTemplateDraft.templateType ?? "box",
       width: Math.max(0.1, Number(customTemplateDraft.width) || 1),
       depth: Math.max(0.1, Number(customTemplateDraft.depth) || 1),
       height: Math.max(0.05, Number(customTemplateDraft.height) || 1),
@@ -858,6 +871,7 @@ function App() {
       custom: true as const,
       name: template.name?.trim() || "Custom Equipment",
       category: template.category ?? "utility",
+      templateType: template.templateType ?? "box",
       width: Math.max(0.1, Number(template.width) || 1),
       depth: Math.max(0.1, Number(template.depth) || 1),
       height: Math.max(0.05, Number(template.height) || 1),
@@ -1009,6 +1023,8 @@ function App() {
                         className="template-delete"
                         role="button"
                         tabIndex={0}
+                        title={text("delete")}
+                        aria-label={text("delete")}
                         onClick={(event) => {
                           event.stopPropagation();
                           deleteCustomTemplate(template.id);
@@ -1345,6 +1361,23 @@ function App() {
                     >
                       {(Object.keys(categoryLabels.ja) as Category[]).map((key) => (
                         <option key={key} value={key}>{categoryLabels[language][key]}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>Type
+                    <select
+                      value={customTemplateEditor.templateType ?? "box"}
+                      onChange={(event) => {
+                        const templateType = event.target.value as EquipmentTemplateType;
+                        updateEditingCustomTemplate({
+                          templateType,
+                          height: templateType === "area" ? 0.05 : customTemplateEditor.height,
+                          elevation: templateType === "area" ? 0 : customTemplateEditor.elevation
+                        });
+                      }}
+                    >
+                      {(Object.keys(templateTypeLabels.ja) as EquipmentTemplateType[]).map((key) => (
+                        <option key={key} value={key}>{templateTypeLabels[language][key]}</option>
                       ))}
                     </select>
                   </label>
@@ -1928,7 +1961,11 @@ function snapSize(value: number, grid: number) {
 }
 
 function isAreaItem(item: LayoutItem) {
-  return item.height <= 0.1 || item.templateId === "crane" || item.templateId.includes("aisle") || item.templateId === "restricted" || item.templateId === "walkway";
+  return item.templateType === "area" || item.templateType === "range" || item.height <= 0.1 || item.templateId === "crane" || item.templateId.includes("aisle") || item.templateId === "restricted" || item.templateId === "walkway";
+}
+
+function isRangeItem(item: LayoutItem) {
+  return item.templateType === "range" || item.templateId === "crane";
 }
 
 function moveAnnotationBy(annotation: AnnotationItem, dx: number, dy: number, maxX: number, maxY: number) {
@@ -2248,22 +2285,23 @@ function createEquipmentModel(item: LayoutItem) {
   const d = item.depth;
   const h = Math.max(item.height, 0.05);
   const id = item.templateId;
-  const isArea = h <= 0.1 || id.includes("aisle") || id === "restricted" || id === "crane";
-  const visibleHeight = isArea ? Math.max(h, 0.06) : h;
-  const opacity = id === "crane" ? 0.16 : isArea ? 0.26 : 0.86;
+  const isRange = isRangeItem(item);
+  const isArea = item.templateType === "area" || isRange || h <= 0.1 || id.includes("aisle") || id === "restricted";
+  const visibleHeight = item.templateType === "area" ? 0.06 : isArea ? Math.max(h, 0.06) : h;
+  const opacity = isRange ? 0.16 : isArea ? 0.26 : 0.86;
   const material = new THREE.MeshLambertMaterial({
     color: baseColor,
     transparent: opacity < 1,
     opacity,
-    depthWrite: id !== "crane",
-    side: id === "crane" ? THREE.DoubleSide : THREE.FrontSide
+    depthWrite: !isRange,
+    side: isRange ? THREE.DoubleSide : THREE.FrontSide
   });
 
   const body = new THREE.Mesh(
-    id === "crane" ? new THREE.PlaneGeometry(w, d) : new THREE.BoxGeometry(w, visibleHeight, d),
+    isRange ? new THREE.PlaneGeometry(w, d) : new THREE.BoxGeometry(w, visibleHeight, d),
     material
   );
-  if (id === "crane") {
+  if (isRange) {
     body.position.set(0, 0.035, 0);
     body.rotation.x = -Math.PI / 2;
     body.renderOrder = 0.12;
@@ -2287,7 +2325,7 @@ function createEquipmentModel(item: LayoutItem) {
 
   addTopIcon(group, item, w, d, visibleHeight);
 
-  if (id === "crane") {
+  if (isRange) {
     addCraneRangeFrame(group, w, d, h, baseColor);
   }
 

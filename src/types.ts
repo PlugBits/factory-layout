@@ -11,6 +11,7 @@ export type ArrowFlowType = "material" | "forklift" | "worker" | "warning" | "cu
 export type ArrowStyle = "band" | "dashed" | "markers";
 export type NoteIcon = "note" | "info" | "warning";
 export type TrafficDirection = "none" | "forward" | "reverse" | "two-way";
+export type EquipmentTemplateType = "box" | "area" | "range";
 
 export type AnnotationItem = {
   id: string;
@@ -35,6 +36,7 @@ export type EquipmentTemplate = {
   id: string;
   name: string;
   category: Category;
+  templateType?: EquipmentTemplateType;
   width: number;
   depth: number;
   height: number;
@@ -57,6 +59,7 @@ export type LayoutItem = {
   depth: number;
   height: number;
   elevation?: number;
+  templateType?: EquipmentTemplateType;
   rotation: 0 | 90 | 180 | 270;
   color: string;
   icon: string;
