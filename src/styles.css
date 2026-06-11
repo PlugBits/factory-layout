@@ -204,18 +204,25 @@ textarea {
 }
 
 .template-delete {
+  display: inline-flex;
   grid-row: 1 / span 2;
   grid-column: 3;
+  align-items: center;
+  justify-content: center;
+  justify-self: end;
   min-height: 26px;
   width: 26px;
-  border: 1px solid #c7d0df;
-  background: #fff;
-  color: #64748b;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #748094;
   cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 }
 
 .template-delete:hover {
-  border-color: #ef4444;
+  border-color: #fecaca;
+  background: #fff5f5;
   color: #dc2626;
 }
 
