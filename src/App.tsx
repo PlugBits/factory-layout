@@ -894,7 +894,7 @@ function App() {
             <button className={orbitTargetMode === "walk" ? "active view-button" : "view-button"} onClick={() => setOrbitTargetMode("walk")}>{text("walk")}</button>
           ) : null}
           {viewMode === "3d" ? (
-            <button className="view-button" onClick={() => void toggleWorkspaceFullscreen()} aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}>
+            <button className="view-button fullscreen-toggle-button" onClick={() => void toggleWorkspaceFullscreen()} aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}>
               {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
               {isFullscreen ? "Exit" : "Fullscreen"}
             </button>
@@ -940,13 +940,13 @@ function App() {
               </button>
             </span>
           ) : null}
-          <button onClick={undo} disabled={!undoStack.length} aria-label="Undo"><Undo2 size={16} />Undo</button>
-          <button onClick={redo} disabled={!redoStack.length} aria-label="Redo"><Redo2 size={16} />Redo</button>
-          <button onClick={rotateSelected} disabled={!selectedItem}><RotateCw size={16} />{text("rotate")}</button>
-          <button onClick={deleteSelected} disabled={!selectedItem}>{text("delete")}</button>
-          <button onClick={saveJson}><Save size={16} />{text("saveJson")}</button>
-          <button onClick={() => fileRef.current?.click()}><Upload size={16} />{text("loadJson")}</button>
-          <button onClick={exportPng}><Download size={16} />PNG</button>
+          <button className="topbar-action" onClick={undo} disabled={!undoStack.length} aria-label="Undo"><Undo2 size={16} />Undo</button>
+          <button className="topbar-action" onClick={redo} disabled={!redoStack.length} aria-label="Redo"><Redo2 size={16} />Redo</button>
+          <button className="topbar-action" onClick={rotateSelected} disabled={!selectedItem}><RotateCw size={16} />{text("rotate")}</button>
+          <button className="topbar-action" onClick={deleteSelected} disabled={!selectedItem}>{text("delete")}</button>
+          <button className="topbar-action" onClick={saveJson}><Save size={16} />{text("saveJson")}</button>
+          <button className="topbar-action" onClick={() => fileRef.current?.click()}><Upload size={16} />{text("loadJson")}</button>
+          <button className="topbar-action" onClick={exportPng}><Download size={16} />PNG</button>
           <input ref={fileRef} hidden type="file" accept="application/json" onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) void loadJson(file);
