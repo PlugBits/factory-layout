@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Box, Copy, Download, Eye, Grid2X2, Redo2, RotateCw, Save, Trash2, Undo2, Upload, ZoomIn, ZoomOut } from "lucide-react";
+import { Box, Copy, Download, Eye, Grid2X2, Maximize2, Minimize2, Redo2, RotateCw, Save, Trash2, Undo2, Upload, ZoomIn, ZoomOut } from "lucide-react";
 import { toPng } from "html-to-image";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -223,8 +223,10 @@ function App() {
   const [panDrag, setPanDrag] = useState<{ x: number; y: number } | null>(null);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
+  const workspaceRef = useRef<HTMLElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const placedListRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   // Feature 2: present mode signal ref
   const presentSignalRef = useRef<(() => void) | null>(null);
   // ウェイポイント
@@ -583,6 +585,15 @@ function App() {
     }
   }, [language]);
 
+  useEffect(() => {
+    const syncFullscreenState = () => {
+      setIsFullscreen(document.fullscreenElement === workspaceRef.current);
+    };
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+    syncFullscreenState();
+    return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
+  }, []);
+
   const deleteSelected = () => {
     if (!selectedId) return;
     recordHistory();
@@ -753,6 +764,14 @@ function App() {
     downloadBlob(await response.blob(), "factory-layout.png");
   };
 
+  const toggleWorkspaceFullscreen = async () => {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+      return;
+    }
+    await workspaceRef.current?.requestFullscreen();
+  };
+
   const annotationLabels = {
     layer: text("layer"),
     flow: text("flow"),
@@ -856,7 +875,7 @@ function App() {
         )}
       </aside>
 
-      <main className="workspace">
+      <main className="workspace" ref={workspaceRef}>
         <header className="topbar">
           {viewMode === "2d" ? (
             <div className="zoom-controls">
@@ -873,6 +892,12 @@ function App() {
           ) : null}
           {viewMode === "3d" ? (
             <button className={orbitTargetMode === "walk" ? "active view-button" : "view-button"} onClick={() => setOrbitTargetMode("walk")}>{text("walk")}</button>
+          ) : null}
+          {viewMode === "3d" ? (
+            <button className="view-button" onClick={() => void toggleWorkspaceFullscreen()} aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}>
+              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              {isFullscreen ? "Exit" : "Fullscreen"}
+            </button>
           ) : null}
           {/* ウェイポイントモードトグル（2Dのみ） */}
           {viewMode === "2d" ? (
@@ -2088,7 +2113,7 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
   const points = getAnnotationArrowPoints(annotation);
 
   // Band height above floor and thickness
-  const y = 0.055;
+  const y = 0.3;
   const bandThickness = 0.018;
 
   // Band width by style

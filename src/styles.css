@@ -395,6 +395,12 @@ textarea {
   min-height: 0;
 }
 
+.workspace:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  background: #eef2f6;
+}
+
 .topbar {
   display: flex;
   justify-content: flex-end;
