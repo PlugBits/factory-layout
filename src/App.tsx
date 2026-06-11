@@ -2090,7 +2090,8 @@ function addForkliftRouteSigns(group: THREE.Group, item: LayoutItem, width: numb
     map: signTexture,
     transparent: true,
     side: THREE.DoubleSide,
-    depthWrite: false
+    depthWrite: true,
+    alphaTest: 0.04
   });
   const lanes = direction === "two-way"
     ? [{ z: -depth * 0.18, sign: 1 }, { z: depth * 0.18, sign: -1 }]
@@ -2303,7 +2304,8 @@ function addFlowSignboards(
     map: texture,
     transparent: true,
     side: THREE.DoubleSide,
-    depthWrite: false,
+    depthWrite: true,
+    alphaTest: 0.04
   });
 
   for (let i = 0; i < points.length - 1; i++) {
@@ -2384,7 +2386,7 @@ function createFlowSignTexture(label: string, color: string) {
 
 function createAnnotationArrowLabel(annotation: AnnotationItem) {
   const texture = createFlowLabelTexture(annotation.label.trim(), annotation.color);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: true, alphaTest: 0.04 }));
   const width = getFlowLabelSpriteWidth(annotation.label.trim());
   sprite.scale.set(width, 0.48, 1);
   sprite.renderOrder = 1.35;
@@ -2621,7 +2623,7 @@ function getAnnotationArrowMarkerPolygons(annotation: AnnotationItem, spacing: n
 function createAnnotationNoteLabel(annotation: AnnotationItem) {
   const texture = createAnnotationNoteTexture(annotation);
   const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
+    new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: true, alphaTest: 0.04 })
   );
   const spriteW = 1.6;
   const spriteH = spriteW * (320 / 512);
@@ -2778,7 +2780,7 @@ function addTopIcon(group: THREE.Group, item: LayoutItem, width: number, depth: 
     const iconH = iconW / (512 / 320); // 0.5625
     const label = new THREE.Mesh(
       new THREE.PlaneGeometry(iconW, iconH),
-      new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, depthWrite: false })
+      new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, depthWrite: true, alphaTest: 0.04 })
     );
     label.rotation.x = -Math.PI / 2;
     label.position.set(0, height + 0.012, 0);
@@ -2788,7 +2790,7 @@ function addTopIcon(group: THREE.Group, item: LayoutItem, width: number, depth: 
     const spriteW = Math.min(1.6, Math.max(0.5, Math.min(width, depth) * 0.85));
     const spriteH = spriteW * (320 / 512);
     const sprite = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
+      new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: true, alphaTest: 0.04 })
     );
     sprite.scale.set(spriteW, spriteH, 1);
     sprite.position.set(0, height + 0.4, 0);
