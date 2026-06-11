@@ -167,7 +167,7 @@ function rgbToHex(r: number, g: number, b: number) {
   return `#${toByte(r)}${toByte(g)}${toByte(b)}`;
 }
 
-export function ColorPicker({ title, value, onChange }: { title: string; value: string; onChange: (color: string) => void }) {
+export function ColorPicker({ title, value, onChange, moreColorLabel = "More color" }: { title: string; value: string; onChange: (color: string) => void; moreColorLabel?: string }) {
   const rgb = hexToRgb(value);
   const updateRgb = (channel: "r" | "g" | "b", nextValue: number) => {
     onChange(rgbToHex(channel === "r" ? nextValue : rgb.r, channel === "g" ? nextValue : rgb.g, channel === "b" ? nextValue : rgb.b));
@@ -189,7 +189,7 @@ export function ColorPicker({ title, value, onChange }: { title: string; value: 
         ))}
       </div>
       <div className="rgb-color-controls">
-        <span>More color</span>
+        <span>{moreColorLabel}</span>
         <label>R<input type="number" min={0} max={255} value={rgb.r} onChange={(event) => updateRgb("r", Number(event.target.value))} /></label>
         <label>G<input type="number" min={0} max={255} value={rgb.g} onChange={(event) => updateRgb("g", Number(event.target.value))} /></label>
         <label>B<input type="number" min={0} max={255} value={rgb.b} onChange={(event) => updateRgb("b", Number(event.target.value))} /></label>
@@ -753,6 +753,30 @@ function App() {
     downloadBlob(await response.blob(), "factory-layout.png");
   };
 
+  const annotationLabels = {
+    layer: text("layer"),
+    flow: text("flow"),
+    arrow: text("arrow"),
+    note: text("note"),
+    emptyHelp: text("annotationEmptyHelp")
+  };
+
+  const annotationPropertiesLabels = {
+    layerItem: text("layerItem"),
+    label: text("label"),
+    flowType: text("flowType"),
+    pathType: text("pathType"),
+    style: text("style"),
+    directionMarkers: text("directionMarkers"),
+    snapToAisle: text("snapToAisle"),
+    body: text("body"),
+    icon: text("iconField"),
+    color: text("color"),
+    visible: text("visible"),
+    delete: text("delete"),
+    moreColor: text("moreColor")
+  };
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -777,7 +801,7 @@ function App() {
               setWaypointMode(false);
             }}
           >
-            設備
+            {text("equipmentTab")}
           </button>
           <button
             className={sidebarMode === "annotation" ? "active" : ""}
@@ -787,7 +811,7 @@ function App() {
               if (annotationLayerVisible === false) toggleAnnotationLayer();
             }}
           >
-            アノテーション
+            {text("annotationTab")}
           </button>
         </div>
 
@@ -806,6 +830,7 @@ function App() {
               <select value={category} onChange={(event) => setCategory(event.target.value as Category)}>
                 {(Object.keys(categoryLabels.ja) as Category[]).map((key) => <option key={key} value={key}>{categoryLabels[language][key]}</option>)}
               </select>
+              <button className="primary-button" onClick={addSelectedTemplate}><Box size={16} />{text("place")}</button>
               <div className="template-list">
                 {templates.filter((template) => template.category === category).map((template) => (
                   <button key={template.id} className={selectedTemplateId === template.id ? "active" : ""} onClick={() => setSelectedTemplateId(template.id)}>
@@ -815,13 +840,13 @@ function App() {
                   </button>
                 ))}
               </div>
-              <button className="primary-button" onClick={addSelectedTemplate}><Box size={16} />{text("place")}</button>
             </section>
           </>
         ) : (
           <AnnotationToolbar
             layerVisible={annotationLayerVisible}
             activeTool={annotationTool}
+            labels={annotationLabels}
             onToggleLayer={toggleAnnotationLayer}
             onSetTool={(tool) => {
               setAnnotationTool(tool);
@@ -1081,10 +1106,11 @@ function App() {
                 </>
               ) : (
                 <>
-                  <div className="panel-title">Layer Items</div>
+                  <div className="panel-title">{text("layerItems")}</div>
                   <AnnotationItemList
                     annotations={annotations}
                     selectedAnnotationId={selectedAnnotationId}
+                    labels={annotationLabels}
                     onSelect={(id) => {
                       setSelectedAnnotationId(id);
                       if (id) { setSelectedId(null); setSecondSelectedId(null); }
@@ -1100,6 +1126,7 @@ function App() {
                   annotation={selectedAnnotation}
                   onUpdate={updateAnnotation}
                   onDelete={deleteAnnotation}
+                  labels={annotationPropertiesLabels}
                 />
               ) : sidebarMode === "equipment" && selectedItem && secondItem ? (
                 <>
@@ -1154,8 +1181,8 @@ function App() {
                   </select></label>
                   {selectedItem.templateId === "forklift-aisle" ? (
                     <details className="route-sign-panel">
-                      <summary>Floor Route Signs</summary>
-                      <label>Traffic direction
+                      <summary>{text("floorRouteSigns")}</summary>
+                      <label>{text("trafficDirection")}
                         <select
                           value={selectedItem.trafficDirection ?? "none"}
                           onChange={(event) => {
@@ -1170,16 +1197,17 @@ function App() {
                           {trafficDirectionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                         </select>
                       </label>
-                      <label>Floor label
+                      <label>{text("floorLabel")}
                         <input
                           value={selectedItem.floorLabel ?? ((selectedItem.trafficDirection ?? "none") === "two-way" ? "TWO WAY" : "ONE WAY")}
                           onChange={(event) => updateItem(selectedItem.id, { floorLabel: event.target.value })}
                         />
                       </label>
                       <ColorPicker
-                        title="Arrow color"
+                        title={text("arrowColor")}
                         value={selectedItem.routeSignColor ?? "#0f766e"}
                         onChange={(color) => updateItem(selectedItem.id, { routeSignColor: color })}
+                        moreColorLabel={text("moreColor")}
                       />
                       <label className="inline-toggle">
                         <input
@@ -1187,7 +1215,7 @@ function App() {
                           checked={selectedItem.showFloorSigns !== false}
                           onChange={(event) => updateItem(selectedItem.id, { showFloorSigns: event.target.checked })}
                         />
-                        Show floor signs
+                        {text("showFloorSigns")}
                       </label>
                     </details>
                   ) : null}
@@ -1195,6 +1223,7 @@ function App() {
                     title={text("color")}
                     value={selectedItem.color}
                     onChange={(color) => updateItem(selectedItem.id, { color })}
+                    moreColorLabel={text("moreColor")}
                   />
                   <p className="section-desc" style={{ marginTop: 8 }}>{text("twoPointHint")}</p>
                 </>

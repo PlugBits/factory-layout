@@ -257,27 +257,45 @@ type AnnotationPanelProps = {
   onToggleLayer: () => void;
   onSetTool: (tool: AnnotationKind | null) => void;
   onSelect: (id: string | null) => void;
+  labels?: AnnotationPanelLabels;
+};
+
+type AnnotationPanelLabels = {
+  layer: string;
+  flow: string;
+  arrow: string;
+  note: string;
+  emptyHelp: string;
+};
+
+const defaultAnnotationLabels: AnnotationPanelLabels = {
+  layer: "Layer",
+  flow: "Flow",
+  arrow: "Arrow",
+  note: "Note",
+  emptyHelp: "Arrow is added by dragging on the board. Note is added by clicking."
 };
 
 export function AnnotationToolbar({
   layerVisible,
   activeTool,
   onToggleLayer,
-  onSetTool
-}: Pick<AnnotationPanelProps, "layerVisible" | "activeTool" | "onToggleLayer" | "onSetTool">) {
+  onSetTool,
+  labels = defaultAnnotationLabels
+}: Pick<AnnotationPanelProps, "layerVisible" | "activeTool" | "onToggleLayer" | "onSetTool" | "labels">) {
   return (
     <section className="panel annotation-panel">
-      <div className="panel-title">Layer</div>
+      <div className="panel-title">{labels.layer}</div>
       <div className="annotation-toolbar">
         <button type="button" className={layerVisible ? "active" : ""} onClick={onToggleLayer}>
           {layerVisible ? <Eye size={16} /> : <EyeOff size={16} />}
-          Flow
+          {labels.flow}
         </button>
         <button type="button" className={activeTool === "arrow" ? "active" : ""} onClick={() => onSetTool(activeTool === "arrow" ? null : "arrow")}>
-          <MoveRight size={16} />Arrow
+          <MoveRight size={16} />{labels.arrow}
         </button>
         <button type="button" className={activeTool === "note" ? "active" : ""} onClick={() => onSetTool(activeTool === "note" ? null : "note")}>
-          <MessageSquare size={16} />Note
+          <MessageSquare size={16} />{labels.note}
         </button>
       </div>
     </section>
@@ -287,8 +305,9 @@ export function AnnotationToolbar({
 export function AnnotationItemList({
   annotations,
   selectedAnnotationId,
-  onSelect
-}: Pick<AnnotationPanelProps, "annotations" | "selectedAnnotationId" | "onSelect">) {
+  onSelect,
+  labels = defaultAnnotationLabels
+}: Pick<AnnotationPanelProps, "annotations" | "selectedAnnotationId" | "onSelect" | "labels">) {
   return (
     <div className="annotation-list annotation-list-panel">
       {annotations.length ? annotations.map((annotation) => (
@@ -303,7 +322,7 @@ export function AnnotationItemList({
           <span>{annotation.label}</span>
         </button>
       )) : (
-        <p>Arrow is added by dragging on the board. Note is added by clicking.</p>
+        <p>{labels.emptyHelp}</p>
       )}
     </div>
   );
@@ -316,12 +335,13 @@ export function AnnotationPanel({
   selectedAnnotationId,
   onToggleLayer,
   onSetTool,
-  onSelect
+  onSelect,
+  labels = defaultAnnotationLabels
 }: AnnotationPanelProps) {
   return (
     <>
-      <AnnotationToolbar layerVisible={layerVisible} activeTool={activeTool} onToggleLayer={onToggleLayer} onSetTool={onSetTool} />
-      <AnnotationItemList annotations={annotations} selectedAnnotationId={selectedAnnotationId} onSelect={onSelect} />
+      <AnnotationToolbar layerVisible={layerVisible} activeTool={activeTool} onToggleLayer={onToggleLayer} onSetTool={onSetTool} labels={labels} />
+      <AnnotationItemList annotations={annotations} selectedAnnotationId={selectedAnnotationId} onSelect={onSelect} labels={labels} />
     </>
   );
 }

@@ -7,9 +7,42 @@ type AnnotationPropertiesProps = {
   annotation: AnnotationItem;
   onUpdate: (id: string, patch: Partial<AnnotationItem>) => void;
   onDelete: (id: string) => void;
+  labels?: AnnotationPropertiesLabels;
 };
 
-export function AnnotationProperties({ annotation, onUpdate, onDelete }: AnnotationPropertiesProps) {
+type AnnotationPropertiesLabels = {
+  layerItem: string;
+  label: string;
+  flowType: string;
+  pathType: string;
+  style: string;
+  directionMarkers: string;
+  snapToAisle: string;
+  body: string;
+  icon: string;
+  color: string;
+  visible: string;
+  delete: string;
+  moreColor: string;
+};
+
+const defaultLabels: AnnotationPropertiesLabels = {
+  layerItem: "Layer Item",
+  label: "Label",
+  flowType: "Flow Type",
+  pathType: "Path Type",
+  style: "Style",
+  directionMarkers: "Direction markers",
+  snapToAisle: "Snap to aisle",
+  body: "Body",
+  icon: "Icon",
+  color: "Color",
+  visible: "Visible",
+  delete: "Delete",
+  moreColor: "More color"
+};
+
+export function AnnotationProperties({ annotation, onUpdate, onDelete, labels = defaultLabels }: AnnotationPropertiesProps) {
   const updateArrowType = (flowType: ArrowFlowType) => {
     const preset = arrowFlowTypeOptions.find((option) => option.value === flowType);
     onUpdate(annotation.id, { flowType, ...(preset && flowType !== "custom" ? { color: preset.color } : {}) });
@@ -17,11 +50,11 @@ export function AnnotationProperties({ annotation, onUpdate, onDelete }: Annotat
 
   return (
     <>
-      <div className="panel-title">Layer Item</div>
-      <label>Label<input value={annotation.label} onChange={(event) => onUpdate(annotation.id, { label: event.target.value })} /></label>
+      <div className="panel-title">{labels.layerItem}</div>
+      <label>{labels.label}<input value={annotation.label} onChange={(event) => onUpdate(annotation.id, { label: event.target.value })} /></label>
       {annotation.kind === "arrow" ? (
         <>
-          <label>Flow Type
+          <label>{labels.flowType}
             <select
               value={annotation.flowType ?? "material"}
               onChange={(event) => updateArrowType(event.target.value as ArrowFlowType)}
@@ -29,7 +62,7 @@ export function AnnotationProperties({ annotation, onUpdate, onDelete }: Annotat
               {arrowFlowTypeOptions.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
             </select>
           </label>
-          <label>Path Type
+          <label>{labels.pathType}
             <select
               value={annotation.shape ?? "straight"}
               onChange={(event) => onUpdate(annotation.id, { shape: event.target.value as ArrowShape })}
@@ -37,7 +70,7 @@ export function AnnotationProperties({ annotation, onUpdate, onDelete }: Annotat
               {arrowShapeOptions.map((shape) => <option key={shape.value} value={shape.value}>{shape.label}</option>)}
             </select>
           </label>
-          <label>Style
+          <label>{labels.style}
             <select
               value={annotation.flowStyle ?? "band"}
               onChange={(event) => onUpdate(annotation.id, { flowStyle: event.target.value as ArrowStyle })}
@@ -51,7 +84,7 @@ export function AnnotationProperties({ annotation, onUpdate, onDelete }: Annotat
               checked={annotation.showMarkers !== false}
               onChange={(event) => onUpdate(annotation.id, { showMarkers: event.target.checked })}
             />
-            Direction markers
+            {labels.directionMarkers}
           </label>
           <label className="inline-toggle">
             <input
@@ -59,9 +92,9 @@ export function AnnotationProperties({ annotation, onUpdate, onDelete }: Annotat
               checked={annotation.snapToPath !== false}
               onChange={(event) => onUpdate(annotation.id, { snapToPath: event.target.checked })}
             />
-            Snap to aisle
+            {labels.snapToAisle}
           </label>
-          <label>Body
+          <label>{labels.body}
             <textarea
               rows={4}
               value={annotation.body ?? ""}
@@ -72,7 +105,7 @@ export function AnnotationProperties({ annotation, onUpdate, onDelete }: Annotat
       ) : (
         <>
           <div className="annotation-color-block">
-            <div className="field-title">Icon</div>
+            <div className="field-title">{labels.icon}</div>
             <div className="note-icon-grid">
               {noteIconOptions.map((option) => {
                 const Icon = option.value === "info" ? Info : option.value === "warning" ? TriangleAlert : MessageSquare;
@@ -91,7 +124,7 @@ export function AnnotationProperties({ annotation, onUpdate, onDelete }: Annotat
               })}
             </div>
           </div>
-          <label>Body
+          <label>{labels.body}
             <textarea
               rows={4}
               value={annotation.body ?? ""}
@@ -101,15 +134,16 @@ export function AnnotationProperties({ annotation, onUpdate, onDelete }: Annotat
         </>
       )}
       <ColorPicker
-        title="Color"
+        title={labels.color}
         value={annotation.color}
         onChange={(color) => onUpdate(annotation.id, { color })}
+        moreColorLabel={labels.moreColor}
       />
       <label className="inline-toggle">
         <input type="checkbox" checked={annotation.visible} onChange={(event) => onUpdate(annotation.id, { visible: event.target.checked })} />
-        Visible
+        {labels.visible}
       </label>
-      <button type="button" className="annotation-delete-button" onClick={() => onDelete(annotation.id)}><Trash2 size={16} />Delete</button>
+      <button type="button" className="annotation-delete-button" onClick={() => onDelete(annotation.id)}><Trash2 size={16} />{labels.delete}</button>
     </>
   );
 }
