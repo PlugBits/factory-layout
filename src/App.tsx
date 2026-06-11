@@ -1093,6 +1093,7 @@ function App() {
                         <span className="placed-main">
                           <strong>{displayItemName(item)}</strong>
                           <small>X {item.x} / Y {item.y}</small>
+                          <small>{item.width} x {item.depth} x {item.height}m</small>
                         </span>
                         <span className="placed-actions">
                           <button onClick={(event) => { event.stopPropagation(); duplicateItem(item); }} aria-label={text("duplicate")}><Copy size={14} /></button>
@@ -1171,14 +1172,16 @@ function App() {
                   <div className="panel-title">{text("selected")}</div>
                   <label>{text("name")}<input value={selectedDisplayName} onChange={(event) => updateItem(selectedItem.id, { name: event.target.value })} /></label>
                   <label>{text("icon")}<input value={selectedItem.icon} maxLength={6} onChange={(event) => updateItem(selectedItem.id, { icon: event.target.value })} /></label>
-                  <label>X m<input type="number" value={selectedItem.x} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { x: Number(event.target.value) })} /></label>
-                  <label>Y m<input type="number" value={selectedItem.y} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { y: Number(event.target.value) })} /></label>
-                  <label>{text("width")} m<input type="number" value={selectedItem.width} step={0.1} onChange={(event) => updateItem(selectedItem.id, { width: Number(event.target.value) })} /></label>
-                  <label>{text("depth")} m<input type="number" value={selectedItem.depth} step={0.1} onChange={(event) => updateItem(selectedItem.id, { depth: Number(event.target.value) })} /></label>
-                  <label>{text("height")} m<input type="number" value={selectedItem.height} step={0.1} onChange={(event) => updateItem(selectedItem.id, { height: Number(event.target.value) })} /></label>
-                  <label>{text("rotate")}<select value={selectedItem.rotation} onChange={(event) => updateItem(selectedItem.id, { rotation: Number(event.target.value) as LayoutItem["rotation"] })}>
-                    {[0, 90, 180, 270].map((angle) => <option key={angle} value={angle}>{angle}°</option>)}
-                  </select></label>
+                  <div className="property-grid">
+                    <label>X m<input type="number" value={selectedItem.x} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { x: Number(event.target.value) })} /></label>
+                    <label>Y m<input type="number" value={selectedItem.y} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { y: Number(event.target.value) })} /></label>
+                    <label>{text("width")} m<input type="number" value={selectedItem.width} step={0.1} onChange={(event) => updateItem(selectedItem.id, { width: Number(event.target.value) })} /></label>
+                    <label>{text("depth")} m<input type="number" value={selectedItem.depth} step={0.1} onChange={(event) => updateItem(selectedItem.id, { depth: Number(event.target.value) })} /></label>
+                    <label>{text("height")} m<input type="number" value={selectedItem.height} step={0.1} onChange={(event) => updateItem(selectedItem.id, { height: Number(event.target.value) })} /></label>
+                    <label>{text("rotate")}<select value={selectedItem.rotation} onChange={(event) => updateItem(selectedItem.id, { rotation: Number(event.target.value) as LayoutItem["rotation"] })}>
+                      {[0, 90, 180, 270].map((angle) => <option key={angle} value={angle}>{angle}°</option>)}
+                    </select></label>
+                  </div>
                   {selectedItem.templateId === "forklift-aisle" ? (
                     <details className="route-sign-panel">
                       <summary>{text("floorRouteSigns")}</summary>
@@ -1987,17 +1990,25 @@ function createEquipmentModel(item: LayoutItem) {
   const id = item.templateId;
   const isArea = h <= 0.1 || id.includes("aisle") || id === "restricted" || id === "crane";
   const visibleHeight = isArea ? Math.max(h, 0.06) : h;
-  const opacity = isArea ? 0.26 : 0.86;
+  const opacity = id === "crane" ? 0.1 : isArea ? 0.26 : 0.86;
+  const material = new THREE.MeshLambertMaterial({
+    color: baseColor,
+    transparent: opacity < 1,
+    opacity,
+    depthWrite: id !== "crane",
+    side: id === "crane" ? THREE.DoubleSide : THREE.FrontSide
+  });
 
   const body = new THREE.Mesh(
-    new THREE.BoxGeometry(w, visibleHeight, d),
-    new THREE.MeshLambertMaterial({
-      color: baseColor,
-      transparent: opacity < 1,
-      opacity
-    })
+    id === "crane" ? new THREE.PlaneGeometry(w, d) : new THREE.BoxGeometry(w, visibleHeight, d),
+    material
   );
-  body.position.set(0, visibleHeight / 2, 0);
+  if (id === "crane") {
+    body.position.set(0, h, 0);
+    body.rotation.x = -Math.PI / 2;
+  } else {
+    body.position.set(0, visibleHeight / 2, 0);
+  }
   group.add(body);
 
   const edge = new THREE.LineSegments(
@@ -2005,6 +2016,7 @@ function createEquipmentModel(item: LayoutItem) {
     new THREE.LineBasicMaterial({ color: baseColor.clone().multiplyScalar(0.42) })
   );
   edge.position.copy(body.position);
+  edge.rotation.copy(body.rotation);
   group.add(edge);
 
   const hasRouteSigns = hasForkliftRouteSigns(item);

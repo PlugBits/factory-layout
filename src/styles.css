@@ -121,8 +121,11 @@ button:disabled {
 }
 
 .template-panel {
-  display: block;
-  flex: 0 1 auto;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  margin-bottom: 0;
 }
 
 label {
@@ -151,16 +154,18 @@ textarea {
 
 .template-list {
   display: grid;
+  flex: 1 1 auto;
   align-content: start;
   gap: 6px;
   grid-auto-rows: max-content;
-  max-height: 320px;
+  min-height: 120px;
+  max-height: none;
   overflow: auto;
   margin: 8px 0;
 }
 
 .template-panel .template-list {
-  max-height: min(560px, calc(100vh - 360px));
+  max-height: none;
 }
 
 .template-list button {
@@ -810,7 +815,7 @@ textarea {
 .placed-list {
   display: grid;
   gap: 6px;
-  max-height: 180px;
+  max-height: clamp(160px, 28vh, 260px);
   overflow: auto;
   margin-bottom: 8px;
 }
@@ -843,6 +848,7 @@ textarea {
 
 .placed-main {
   display: grid;
+  gap: 1px;
   min-width: 0;
 }
 
@@ -855,8 +861,21 @@ textarea {
 }
 
 .placed-main small {
+  overflow: hidden;
   color: #64748b;
   font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.property-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+}
+
+.property-grid label {
+  margin-bottom: 0;
 }
 
 .placed-actions {
