@@ -959,31 +959,35 @@ function App() {
             </details>
 
             <section className="panel template-panel">
-              <div className="panel-title">{text("equipmentTemplates")}</div>
-              <select value={category} onChange={(event) => {
-                const nextCategory = event.target.value as TemplateGroup;
-                setCategory(nextCategory);
-                if (nextCategory !== "custom") setEditingCustomTemplateId(null);
-              }}>
-                {(Object.keys(categoryLabels.ja) as Category[]).map((key) => <option key={key} value={key}>{categoryLabels[language][key]}</option>)}
-                <option value="custom">{text("customTemplate")}</option>
-              </select>
-              <button className="primary-button" onClick={addSelectedTemplate} disabled={!canPlaceSelectedTemplate}><Box size={16} />{text("place")}</button>
-              {category === "custom" ? (
-                <button
-                  className="secondary-button custom-template-add"
-                  onClick={() => {
-                    setEditingCustomTemplateId("new");
-                    setSelectedId(null);
-                    setSecondSelectedId(null);
-                    setSelectedAnnotationId(null);
-                    setSidebarMode("equipment");
-                    setCustomTemplateDraft(defaultCustomTemplateDraft);
-                  }}
-                >
-                  + {text("addCustomTemplate")}
-                </button>
-              ) : null}
+              <div className="template-panel-header">
+                <div className="panel-title">{text("equipmentTemplates")}</div>
+                <button className="primary-button template-place-button" onClick={addSelectedTemplate} disabled={!canPlaceSelectedTemplate} title={text("place")}><Box size={16} /><span>{text("place")}</span></button>
+              </div>
+              <div className="template-controls">
+                <select value={category} onChange={(event) => {
+                  const nextCategory = event.target.value as TemplateGroup;
+                  setCategory(nextCategory);
+                  if (nextCategory !== "custom") setEditingCustomTemplateId(null);
+                }}>
+                  {(Object.keys(categoryLabels.ja) as Category[]).map((key) => <option key={key} value={key}>{categoryLabels[language][key]}</option>)}
+                  <option value="custom">{text("customTemplate")}</option>
+                </select>
+                {category === "custom" ? (
+                  <button
+                    className="secondary-button custom-template-add"
+                    onClick={() => {
+                      setEditingCustomTemplateId("new");
+                      setSelectedId(null);
+                      setSecondSelectedId(null);
+                      setSelectedAnnotationId(null);
+                      setSidebarMode("equipment");
+                      setCustomTemplateDraft(defaultCustomTemplateDraft);
+                    }}
+                  >
+                    + {text("addCustomTemplate")}
+                  </button>
+                ) : null}
+              </div>
               <div className="template-list">
                 {visibleTemplates.map((template) => (
                   <button key={template.id} className={selectedTemplateId === template.id ? "active" : ""} onClick={() => {

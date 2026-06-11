@@ -126,6 +126,32 @@ button:disabled {
   flex-direction: column;
   min-height: 0;
   margin-bottom: 0;
+  padding: 8px;
+}
+
+.template-panel-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.template-panel-header .panel-title {
+  margin-bottom: 0;
+}
+
+.template-place-button {
+  width: auto;
+  min-height: 28px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.template-controls {
+  display: grid;
+  gap: 6px;
+  flex: 0 0 auto;
 }
 
 label {
@@ -161,7 +187,8 @@ textarea {
   min-height: 120px;
   max-height: none;
   overflow: auto;
-  margin: 8px 0;
+  margin: 6px -2px;
+  padding: 2px;
 }
 
 .template-panel .template-list {
@@ -247,7 +274,20 @@ textarea {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
-  margin-top: 8px;
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid #d7dee9;
+}
+
+.template-json-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 32px;
+  border-radius: 4px;
+  padding: 5px 7px;
 }
 
 .layer-tab-toggle {
@@ -435,6 +475,10 @@ textarea {
   font-weight: 800;
 }
 
+.template-panel-header .template-place-button {
+  width: auto;
+}
+
 .secondary-button {
   display: inline-flex;
   align-items: center;
@@ -450,7 +494,7 @@ textarea {
 }
 
 .custom-template-add {
-  margin-top: 6px;
+  min-height: 34px;
 }
 
 .delete-button {
