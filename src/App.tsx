@@ -1093,7 +1093,6 @@ function App() {
                         <span className="placed-main">
                           <strong>{displayItemName(item)}</strong>
                           <small>X {item.x} / Y {item.y}</small>
-                          <small>{item.width} x {item.depth} x {item.height}m</small>
                         </span>
                         <span className="placed-actions">
                           <button onClick={(event) => { event.stopPropagation(); duplicateItem(item); }} aria-label={text("duplicate")}><Copy size={14} /></button>
@@ -1990,7 +1989,7 @@ function createEquipmentModel(item: LayoutItem) {
   const id = item.templateId;
   const isArea = h <= 0.1 || id.includes("aisle") || id === "restricted" || id === "crane";
   const visibleHeight = isArea ? Math.max(h, 0.06) : h;
-  const opacity = id === "crane" ? 0.1 : isArea ? 0.26 : 0.86;
+  const opacity = id === "crane" ? 0.16 : isArea ? 0.26 : 0.86;
   const material = new THREE.MeshLambertMaterial({
     color: baseColor,
     transparent: opacity < 1,
@@ -2004,8 +2003,9 @@ function createEquipmentModel(item: LayoutItem) {
     material
   );
   if (id === "crane") {
-    body.position.set(0, h, 0);
+    body.position.set(0, 0.035, 0);
     body.rotation.x = -Math.PI / 2;
+    body.renderOrder = 0.12;
   } else {
     body.position.set(0, visibleHeight / 2, 0);
   }
@@ -2027,7 +2027,7 @@ function createEquipmentModel(item: LayoutItem) {
   addTopIcon(group, item, w, d, visibleHeight);
 
   if (id === "crane") {
-    addFrame(group, w, d, h);
+    addCraneRangeFrame(group, w, d, h, baseColor);
   }
 
   if (id === "window-wall") {
@@ -2711,18 +2711,31 @@ function addWindowPanels(group: THREE.Group, width: number, depth: number, heigh
   }
 }
 
-function addFrame(group: THREE.Group, width: number, depth: number, height: number) {
-  const material = new THREE.MeshLambertMaterial({ color: "#2563eb", transparent: true, opacity: 0.72 });
-  const addBeam = (w: number, h: number, d: number, x: number, y: number, z: number) => {
-    const beam = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
-    beam.position.set(x, y, z);
-    group.add(beam);
-  };
-
-  addBeam(width, 0.08, 0.08, 0, height, -depth / 2);
-  addBeam(width, 0.08, 0.08, 0, height, depth / 2);
-  addBeam(0.08, 0.08, depth, -width / 2, height, 0);
-  addBeam(0.08, 0.08, depth, width / 2, height, 0);
+function addCraneRangeFrame(group: THREE.Group, width: number, depth: number, height: number, baseColor: THREE.Color) {
+  const color = baseColor.clone().multiplyScalar(0.62);
+  const lineMaterial = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.82,
+    depthWrite: false
+  });
+  const points = [
+    [-width / 2, 0.055, -depth / 2], [width / 2, 0.055, -depth / 2],
+    [width / 2, 0.055, -depth / 2], [width / 2, 0.055, depth / 2],
+    [width / 2, 0.055, depth / 2], [-width / 2, 0.055, depth / 2],
+    [-width / 2, 0.055, depth / 2], [-width / 2, 0.055, -depth / 2],
+    [-width / 2, height, -depth / 2], [width / 2, height, -depth / 2],
+    [width / 2, height, -depth / 2], [width / 2, height, depth / 2],
+    [width / 2, height, depth / 2], [-width / 2, height, depth / 2],
+    [-width / 2, height, depth / 2], [-width / 2, height, -depth / 2],
+    [-width / 2, 0.055, -depth / 2], [-width / 2, height, -depth / 2],
+    [width / 2, 0.055, -depth / 2], [width / 2, height, -depth / 2],
+    [width / 2, 0.055, depth / 2], [width / 2, height, depth / 2],
+    [-width / 2, 0.055, depth / 2], [-width / 2, height, depth / 2]
+  ].map(([x, y, z]) => new THREE.Vector3(x, y, z));
+  const frame = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points), lineMaterial);
+  frame.renderOrder = 1.4;
+  group.add(frame);
 }
 
 function addTopIcon(group: THREE.Group, item: LayoutItem, width: number, depth: number, height: number) {
