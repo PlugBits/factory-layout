@@ -256,6 +256,7 @@ function App() {
   const customTemplatesFileRef = useRef<HTMLInputElement | null>(null);
   const placedListRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isPresenting, setIsPresenting] = useState(false);
   // Feature 2: present mode signal ref
   const presentSignalRef = useRef<(() => void) | null>(null);
   // ウェイポイント
@@ -1068,7 +1069,8 @@ function App() {
         )}
       </aside>
 
-      <main className={isFullscreen && viewMode === "3d" ? "workspace fullscreen-3d" : "workspace"} ref={workspaceRef}>
+      <main className={`${isFullscreen && viewMode === "3d" ? "workspace fullscreen-3d" : "workspace"}${isPresenting ? " presenting" : ""}`} ref={workspaceRef}>
+        {!(isFullscreen && viewMode === "3d" && isPresenting) ? (
         <header className="topbar">
           {viewMode === "2d" ? (
             <div className="zoom-controls">
@@ -1145,6 +1147,7 @@ function App() {
             if (file) void loadJson(file);
           }} />
         </header>
+        ) : null}
 
         <section className="content">
           {viewMode === "3d" && isFullscreen ? (
@@ -1289,9 +1292,11 @@ function App() {
               presentMoveSecRef={presentMoveSecRef}
               presentRotateSecRef={presentRotateSecRef}
               walkHelp={text("walkHelp")}
+              onPresentStateChange={setIsPresenting}
             />
           )}
 
+          {!(isFullscreen && viewMode === "3d" && isPresenting) ? (
           <aside className="properties">
             <div className="properties-top">
               {sidebarMode === "equipment" || (viewMode === "3d" && isFullscreen) ? (
@@ -1528,6 +1533,7 @@ function App() {
               )}
             </div>
           </aside>
+          ) : null}
         </section>
       </main>
       {sizeEditItem ? (
@@ -1547,7 +1553,7 @@ function App() {
   );
 }
 
-function ThreePreview({ factory, items, annotations, annotationLayerVisible, selectedId, orbitTargetMode, presentSignalRef, onPresentDone, waypointsRef, presentMoveSecRef, presentRotateSecRef, walkHelp }: {
+function ThreePreview({ factory, items, annotations, annotationLayerVisible, selectedId, orbitTargetMode, presentSignalRef, onPresentDone, onPresentStateChange, waypointsRef, presentMoveSecRef, presentRotateSecRef, walkHelp }: {
   factory: ProjectFile["factory"];
   items: LayoutItem[];
   annotations: AnnotationItem[];
@@ -1556,6 +1562,7 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
   orbitTargetMode: OrbitTargetMode;
   presentSignalRef?: React.MutableRefObject<(() => void) | null>;
   onPresentDone?: () => void;
+  onPresentStateChange?: (isPresenting: boolean) => void;
   waypointsRef?: React.MutableRefObject<Waypoint[]>;
   presentMoveSecRef?: React.MutableRefObject<number>;
   presentRotateSecRef?: React.MutableRefObject<number>;
@@ -1712,7 +1719,15 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
       fromQuat: THREE.Quaternion; toQuat: THREE.Quaternion;
       startTime: number; duration: number; onDone: () => void;
     };
+    type PathAnim = {
+      curve: THREE.CatmullRomCurve3;
+      startTime: number;
+      duration: number;
+      rotateDur: number;
+      onDone: () => void;
+    };
     let camAnim: CamAnim | null = null;
+    let pathAnim: PathAnim | null = null;
     let tweening = false;
     let cancelAnim = false;
 
@@ -1736,34 +1751,30 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
     const endWalkthrough = () => {
       tweening = false;
       camAnim = null;
+      pathAnim = null;
+      onPresentStateChange?.(false);
       if (controls) controls.enabled = true;
     };
 
     // Move → Rotate → Move → … sequence. moveSecPerM/rotateDur fixed at play-start.
-    const moveToWaypoint = (wps: Waypoint[], idx: number, moveSecPerM: number, rotateDur: number) => {
-      if (cancelAnim || idx >= wps.length) { endWalkthrough(); return; }
-      const wp = wps[idx];
-      const toPos = new THREE.Vector3(wp.x, 1.6, wp.y);
-      const frozenQuat = camera.quaternion.clone(); // orientation locked while moving
-      const dist = camera.position.distanceTo(toPos);
-      const moveDur = Math.max(500, dist * moveSecPerM * 1000);
-
-      startAnim(camera.position.clone(), toPos, frozenQuat, frozenQuat, moveDur, () => {
-        if (cancelAnim) { endWalkthrough(); return; }
-        const nextWp = wps[idx + 1];
-        if (nextWp) {
-          // Rotate at waypoint to face next destination
-          const nextPos = new THREE.Vector3(nextWp.x, 1.6, nextWp.y);
-          const fromQ = camera.quaternion.clone();
-          const toQ = lookAtQuat(toPos, nextPos);
-          startAnim(toPos, toPos, fromQ, toQ, rotateDur, () => {
-            if (cancelAnim) { endWalkthrough(); return; }
-            setTimeout(() => moveToWaypoint(wps, idx + 1, moveSecPerM, rotateDur), 400);
-          });
-        } else {
+    const startPathAnimation = (wps: Waypoint[], speedMps: number, rotateDur: number) => {
+      if (wps.length < 2) {
+        endWalkthrough();
+        onPresentDoneRef.current?.();
+        return;
+      }
+      const points = wps.map((wp) => new THREE.Vector3(wp.x, 1.6, wp.y));
+      const curve = new THREE.CatmullRomCurve3(points, false, "catmullrom", 0.35);
+      pathAnim = {
+        curve,
+        startTime: performance.now(),
+        duration: Math.max(2200, (curve.getLength() / speedMps) * 1000),
+        rotateDur,
+        onDone: () => {
           endWalkthrough();
+          onPresentDoneRef.current?.();
         }
-      });
+      };
     };
 
     if (presentSignalRef && orbitTargetMode !== "walk") {
@@ -1771,33 +1782,27 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
         if (tweening) return;
         tweening = true;
         cancelAnim = false;
+        onPresentStateChange?.(true);
         if (controls) controls.enabled = false;
 
         // Capture speed settings once at play-start; stable throughout the run
         const speedMps = Math.max(0.1, presentMoveSecRef?.current ?? 1.0); // m/s
-        const moveSecPerM = 1 / speedMps; // convert to s/m for distance calculation
         const rotateDur = Math.max(300, (presentRotateSecRef?.current ?? 1.5) * 1000);
         const wps = waypointsRef?.current ?? [];
 
         if (wps.length > 0) {
           // Step 0: fly from orbit to WP[0] — fixed 2s
           const firstPos = new THREE.Vector3(wps[0].x, 1.6, wps[0].y);
+          const firstLook = wps[1] ? new THREE.Vector3(wps[1].x, 1.45, wps[1].y) : new THREE.Vector3(factory.width / 2, 1.2, factory.depth / 2);
           const fromQ = camera.quaternion.clone();
-          const toQ = lookAtQuat(camera.position, firstPos);
+          const toQ = lookAtQuat(firstPos, firstLook);
           startAnim(camera.position.clone(), firstPos, fromQ, toQ, 2000, () => {
             if (cancelAnim) { endWalkthrough(); return; }
-            // Arrived at WP[0]: rotate to face WP[1] then walk the rest
-            const nextWp = wps[1];
-            if (nextWp) {
-              const nextPos = new THREE.Vector3(nextWp.x, 1.6, nextWp.y);
-              const rFromQ = camera.quaternion.clone();
-              const rToQ = lookAtQuat(firstPos, nextPos);
-              startAnim(firstPos, firstPos, rFromQ, rToQ, rotateDur, () => {
-                if (cancelAnim) { endWalkthrough(); return; }
-                setTimeout(() => moveToWaypoint(wps, 1, moveSecPerM, rotateDur), 400);
-              });
+            if (wps.length > 1) {
+              startPathAnimation(wps, speedMps, rotateDur);
             } else {
               endWalkthrough();
+              onPresentDoneRef.current?.();
             }
           });
         } else {
@@ -1806,7 +1811,7 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
           const fromQ = camera.quaternion.clone();
           const toQ = lookAtQuat(camera.position, new THREE.Vector3(factory.width / 2, 1.0, factory.depth / 2));
           startAnim(camera.position.clone(), toPos, fromQ, toQ, 2000, () => {
-            tweening = false; camAnim = null;
+            endWalkthrough();
             onPresentDoneRef.current?.();
           });
         }
@@ -1894,8 +1899,11 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
 
     const clock = new THREE.Clock();
     let animation = 0;
+    let previousFrameTime = performance.now();
     const render = (timestamp: number) => {
       animation = requestAnimationFrame(render);
+      const frameDelta = Math.max(0, timestamp - previousFrameTime);
+      previousFrameTime = timestamp;
       // Manual camera animation (position lerp + quaternion slerp)
       if (camAnim) {
         const raw = Math.min((timestamp - camAnim.startTime) / camAnim.duration, 1);
@@ -1903,6 +1911,22 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
         camera.position.lerpVectors(camAnim.fromPos, camAnim.toPos, t);
         camera.quaternion.slerpQuaternions(camAnim.fromQuat, camAnim.toQuat, t);
         if (raw >= 1) { const done = camAnim.onDone; camAnim = null; done(); }
+      }
+      if (pathAnim) {
+        const raw = THREE.MathUtils.clamp((timestamp - pathAnim.startTime) / pathAnim.duration, 0, 1);
+        const t = easeInOut(raw);
+        const position = pathAnim.curve.getPointAt(t);
+        const lookT = Math.min(1, t + 0.035);
+        const lookPoint = pathAnim.curve.getPointAt(lookT);
+        if (lookPoint.distanceToSquared(position) < 0.0001) {
+          lookPoint.copy(pathAnim.curve.getPointAt(Math.max(0, t - 0.035)));
+        }
+        lookPoint.y = 1.42;
+        camera.position.copy(position);
+        const targetQuat = lookAtQuat(position, lookPoint);
+        const lookBlend = THREE.MathUtils.clamp(frameDelta / pathAnim.rotateDur, 0.025, 0.18);
+        camera.quaternion.slerp(targetQuat, lookBlend);
+        if (raw >= 1) { const done = pathAnim.onDone; pathAnim = null; done(); }
       }
       if (orbitTargetMode === "walk") {
         updateWalkCamera(camera, walkKeys, walkState.speed, clock.getDelta(), factory);
@@ -1918,6 +1942,8 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
       cancelAnimationFrame(animation);
       cancelAnim = true;
       camAnim = null;
+      pathAnim = null;
+      onPresentStateChange?.(false);
       resizeObserver.disconnect();
       controls?.dispose();
       if (presentSignalRef) presentSignalRef.current = null;
