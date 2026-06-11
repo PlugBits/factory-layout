@@ -23,6 +23,7 @@ import type {
   ArrowStyle,
   AnnotationKind,
   Category,
+  CustomTemplate,
   EdgePair,
   EquipmentTemplate,
   LayoutItem,
@@ -107,6 +108,17 @@ const trafficDirectionOptions: Array<{ label: string; value: TrafficDirection }>
   { label: "One way reverse", value: "reverse" },
   { label: "Two way", value: "two-way" }
 ];
+
+const defaultCustomTemplateDraft: Omit<EquipmentTemplate, "id"> = {
+  name: "Custom Equipment",
+  category: "utility",
+  width: 1,
+  depth: 1,
+  height: 1,
+  elevation: 0,
+  color: "#64748b",
+  icon: "C"
+};
 
 function makeId(prefix: string) {
   return `${prefix}-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`;
@@ -206,6 +218,8 @@ function App() {
   const [factory, setFactory] = useState(() => makeFactory(draftProject?.factory));
   const [category, setCategory] = useState<Category>("machine");
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0].id);
+  const [customTemplates, setCustomTemplates] = useState<CustomTemplate[]>(() => draftProject?.customTemplates ?? []);
+  const [customTemplateDraft, setCustomTemplateDraft] = useState<Omit<EquipmentTemplate, "id">>(defaultCustomTemplateDraft);
   const [items, setItems] = useState<LayoutItem[]>(() => draftProject?.items ?? []);
   const [waypoints, setWaypoints] = useState<Waypoint[]>(() => draftProject?.waypoints ?? []);
   const [annotations, setAnnotations] = useState<AnnotationItem[]>(() => draftProject?.annotations ?? []);
@@ -225,6 +239,7 @@ function App() {
   const boardRef = useRef<HTMLDivElement | null>(null);
   const workspaceRef = useRef<HTMLElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const customTemplatesFileRef = useRef<HTMLInputElement | null>(null);
   const placedListRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   // Feature 2: present mode signal ref
@@ -253,7 +268,8 @@ function App() {
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
   const secondItem = items.find((item) => item.id === secondSelectedId) ?? null;
   const sizeEditItem = items.find((item) => item.id === sizeEditId) ?? null;
-  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0];
+  const allTemplates = useMemo<EquipmentTemplate[]>(() => [...templates, ...customTemplates], [customTemplates]);
+  const selectedTemplate = allTemplates.find((template) => template.id === selectedTemplateId) ?? allTemplates[0] ?? templates[0];
   const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null;
   const text = (key: Parameters<typeof t>[1]) => t(language, key);
   const displayItemName = (item: LayoutItem) => getItemDisplayName(language, item.templateId, item.name);
@@ -273,7 +289,8 @@ function App() {
     items: items.map((item) => ({ ...item })),
     waypoints: waypoints.map((waypoint) => ({ ...waypoint })),
     annotations: annotations.map((annotation) => ({ ...annotation })),
-    annotationLayerVisible
+    annotationLayerVisible,
+    customTemplates: customTemplates.map((template) => ({ ...template }))
   });
 
   const applyProjectSnapshot = (snapshot: ProjectSnapshot) => {
@@ -282,6 +299,7 @@ function App() {
     setWaypoints((snapshot.waypoints ?? []).map((waypoint) => ({ ...waypoint })));
     setAnnotations((snapshot.annotations ?? []).map((annotation) => ({ ...annotation })));
     setAnnotationLayerVisible(snapshot.annotationLayerVisible ?? true);
+    setCustomTemplates((snapshot.customTemplates ?? []).map((template) => ({ ...template, custom: true })));
     setSelectedId(null);
     setSecondSelectedId(null);
     setSizeEditId(null);
@@ -569,13 +587,13 @@ function App() {
   }, [selectedId]);
 
   useEffect(() => {
-    const project: ProjectFile = { version: 1, factory, items, waypoints, annotations, annotationLayerVisible };
+    const project: ProjectFile = { version: 1, factory, items, waypoints, annotations, annotationLayerVisible, customTemplates };
     try {
       window.localStorage.setItem(draftStorageKey, JSON.stringify(project));
     } catch {
       // Autosave is best-effort; JSON export still works when storage is unavailable.
     }
-  }, [factory, items, waypoints, annotations, annotationLayerVisible]);
+  }, [factory, items, waypoints, annotations, annotationLayerVisible, customTemplates]);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -737,7 +755,7 @@ function App() {
   };
 
   const saveJson = () => {
-    const project: ProjectFile = { version: 1, factory, items, waypoints, annotations, annotationLayerVisible };
+    const project: ProjectFile = { version: 1, factory, items, waypoints, annotations, annotationLayerVisible, customTemplates };
     downloadBlob(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" }), "factory-layout.json");
   };
 
@@ -754,6 +772,7 @@ function App() {
     setWaypoints(project.waypoints ?? []);
     setAnnotations(project.annotations ?? []);
     setAnnotationLayerVisible(project.annotationLayerVisible ?? true);
+    setCustomTemplates((project.customTemplates ?? []).map((template) => ({ ...template, custom: true })));
     setSelectedId(null);
     setSelectedAnnotationId(null);
   };
@@ -763,6 +782,71 @@ function App() {
     const dataUrl = await toPng(boardRef.current, { backgroundColor: "#ffffff", pixelRatio: 2 });
     const response = await fetch(dataUrl);
     downloadBlob(await response.blob(), "factory-layout.png");
+  };
+
+  const addCustomTemplate = () => {
+    const name = customTemplateDraft.name.trim() || "Custom Equipment";
+    const icon = customTemplateDraft.icon.trim() || "C";
+    const template: CustomTemplate = {
+      id: makeId("custom-template"),
+      custom: true,
+      name,
+      category: customTemplateDraft.category,
+      width: Math.max(0.1, Number(customTemplateDraft.width) || 1),
+      depth: Math.max(0.1, Number(customTemplateDraft.depth) || 1),
+      height: Math.max(0.05, Number(customTemplateDraft.height) || 1),
+      elevation: Math.max(0, Number(customTemplateDraft.elevation) || 0),
+      color: customTemplateDraft.color,
+      icon: icon.slice(0, 6)
+    };
+    recordHistory();
+    setCustomTemplates((current) => [...current, template]);
+    setCategory(template.category);
+    setSelectedTemplateId(template.id);
+    setCustomTemplateDraft({ ...template, name, icon });
+  };
+
+  const deleteCustomTemplate = (id: string) => {
+    recordHistory();
+    setCustomTemplates((current) => current.filter((template) => template.id !== id));
+    if (selectedTemplateId === id) setSelectedTemplateId(templates[0].id);
+  };
+
+  const exportCustomTemplates = () => {
+    downloadBlob(new Blob([JSON.stringify({ version: 1, customTemplates }, null, 2)], { type: "application/json" }), "factory-custom-templates.json");
+  };
+
+  const importCustomTemplates = async (file: File) => {
+    const fileText = await file.text();
+    const parsed = JSON.parse(fileText) as { customTemplates?: CustomTemplate[] } | CustomTemplate[];
+    const imported = Array.isArray(parsed) ? parsed : parsed.customTemplates;
+    if (!Array.isArray(imported)) {
+      window.alert(text("invalidJson"));
+      return;
+    }
+    const sanitized = imported.map((template) => ({
+      ...template,
+      id: template.id?.startsWith("custom-template") ? template.id : makeId("custom-template"),
+      custom: true as const,
+      name: template.name?.trim() || "Custom Equipment",
+      category: template.category ?? "utility",
+      width: Math.max(0.1, Number(template.width) || 1),
+      depth: Math.max(0.1, Number(template.depth) || 1),
+      height: Math.max(0.05, Number(template.height) || 1),
+      elevation: Math.max(0, Number(template.elevation) || 0),
+      color: template.color || "#64748b",
+      icon: (template.icon || "C").slice(0, 6)
+    }));
+    recordHistory();
+    setCustomTemplates((current) => {
+      const usedIds = new Set(current.map((template) => template.id));
+      const withUniqueIds = sanitized.map((template) => {
+        const id = usedIds.has(template.id) ? makeId("custom-template") : template.id;
+        usedIds.add(id);
+        return { ...template, id };
+      });
+      return [...current, ...withUniqueIds];
+    });
   };
 
   const toggleWorkspaceFullscreen = async () => {
@@ -852,14 +936,54 @@ function App() {
               </select>
               <button className="primary-button" onClick={addSelectedTemplate}><Box size={16} />{text("place")}</button>
               <div className="template-list">
-                {templates.filter((template) => template.category === category).map((template) => (
+                {allTemplates.filter((template) => template.category === category).map((template) => (
                   <button key={template.id} className={selectedTemplateId === template.id ? "active" : ""} onClick={() => setSelectedTemplateId(template.id)}>
                     <span style={{ backgroundColor: template.color }}>{template.icon}</span>
                     <strong>{getTemplateName(language, template.id, template.name)}</strong>
-                    <small>{template.width} x {template.depth} x {template.height}m</small>
+                    <small>{template.width} x {template.depth} x {template.height}m{template.elevation ? ` / +${template.elevation}m` : ""}</small>
+                    {"custom" in template ? (
+                      <span
+                        className="template-delete"
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          deleteCustomTemplate(template.id);
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>
+              <details className="custom-template-panel">
+                <summary>{text("customTemplate")}</summary>
+                <label>Name<input value={customTemplateDraft.name} onChange={(event) => setCustomTemplateDraft((current) => ({ ...current, name: event.target.value }))} /></label>
+                <label>Category
+                  <select value={customTemplateDraft.category} onChange={(event) => setCustomTemplateDraft((current) => ({ ...current, category: event.target.value as Category }))}>
+                    {(Object.keys(categoryLabels.ja) as Category[]).map((key) => <option key={key} value={key}>{categoryLabels[language][key]}</option>)}
+                  </select>
+                </label>
+                <label>Icon<input value={customTemplateDraft.icon} maxLength={6} onChange={(event) => setCustomTemplateDraft((current) => ({ ...current, icon: event.target.value }))} /></label>
+                <div className="property-grid">
+                  <label>{text("width")} m<input type="number" min={0.1} step={0.1} value={customTemplateDraft.width} onChange={(event) => setCustomTemplateDraft((current) => ({ ...current, width: Number(event.target.value) }))} /></label>
+                  <label>{text("depth")} m<input type="number" min={0.1} step={0.1} value={customTemplateDraft.depth} onChange={(event) => setCustomTemplateDraft((current) => ({ ...current, depth: Number(event.target.value) }))} /></label>
+                  <label>{text("height")} m<input type="number" min={0.05} step={0.1} value={customTemplateDraft.height} onChange={(event) => setCustomTemplateDraft((current) => ({ ...current, height: Number(event.target.value) }))} /></label>
+                  <label>{text("elevation")} m<input type="number" min={0} step={0.1} value={customTemplateDraft.elevation ?? 0} onChange={(event) => setCustomTemplateDraft((current) => ({ ...current, elevation: Number(event.target.value) }))} /></label>
+                </div>
+                <ColorPicker title={text("color")} value={customTemplateDraft.color} onChange={(color) => setCustomTemplateDraft((current) => ({ ...current, color }))} moreColorLabel={text("moreColor")} />
+                <button className="primary-button" onClick={addCustomTemplate}><Box size={16} />{text("addCustomTemplate")}</button>
+                <div className="template-json-actions">
+                  <button onClick={exportCustomTemplates} disabled={!customTemplates.length}><Download size={14} />{text("exportTemplates")}</button>
+                  <button onClick={() => customTemplatesFileRef.current?.click()}><Upload size={14} />{text("importTemplates")}</button>
+                </div>
+                <input ref={customTemplatesFileRef} hidden type="file" accept="application/json" onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void importCustomTemplates(file);
+                  event.target.value = "";
+                }} />
+              </details>
             </section>
           </>
         ) : (

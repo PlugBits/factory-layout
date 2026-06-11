@@ -170,7 +170,7 @@ textarea {
 
 .template-list button {
   display: grid;
-  grid-template-columns: 44px 1fr;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   gap: 7px;
   align-items: center;
   border-radius: 5px;
@@ -201,6 +201,46 @@ textarea {
 .template-list small {
   color: #64748b;
   font-size: 11px;
+}
+
+.template-delete {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  min-height: 26px;
+  width: 26px;
+  border: 1px solid #c7d0df;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.template-delete:hover {
+  border-color: #ef4444;
+  color: #dc2626;
+}
+
+.custom-template-panel {
+  flex: 0 0 auto;
+  border-top: 1px solid #d7dee9;
+  padding-top: 8px;
+}
+
+.custom-template-panel summary {
+  cursor: pointer;
+  color: #172033;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.custom-template-panel[open] summary {
+  margin-bottom: 8px;
+}
+
+.template-json-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 8px;
 }
 
 .layer-tab-toggle {

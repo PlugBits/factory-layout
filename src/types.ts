@@ -43,6 +43,10 @@ export type EquipmentTemplate = {
   icon: string;
 };
 
+export type CustomTemplate = EquipmentTemplate & {
+  custom: true;
+};
+
 export type LayoutItem = {
   id: string;
   templateId: string;
@@ -77,6 +81,7 @@ export type ProjectFile = {
   waypoints?: Waypoint[];
   annotations?: AnnotationItem[];
   annotationLayerVisible?: boolean;
+  customTemplates?: CustomTemplate[];
 };
 
-export type ProjectSnapshot = Pick<ProjectFile, "factory" | "items" | "waypoints" | "annotations" | "annotationLayerVisible">;
+export type ProjectSnapshot = Pick<ProjectFile, "factory" | "items" | "waypoints" | "annotations" | "annotationLayerVisible" | "customTemplates">;
