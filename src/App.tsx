@@ -1721,6 +1721,7 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
     };
     type PathAnim = {
       curve: THREE.CatmullRomCurve3;
+      length: number;
       startTime: number;
       duration: number;
       rotateDur: number;
@@ -1756,19 +1757,36 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
       if (controls) controls.enabled = true;
     };
 
-    // Move → Rotate → Move → … sequence. moveSecPerM/rotateDur fixed at play-start.
+    // Route playback uses a continuous curve with constant-speed sampling.
+    const smoothWaypoints = (wps: Waypoint[]) => {
+      if (wps.length <= 2) return wps;
+      const minSpacing = 1.2;
+      const smoothed = [wps[0]];
+      for (let index = 1; index < wps.length - 1; index += 1) {
+        const previous = smoothed[smoothed.length - 1];
+        const current = wps[index];
+        const distance = Math.hypot(current.x - previous.x, current.y - previous.y);
+        if (distance >= minSpacing) smoothed.push(current);
+      }
+      smoothed.push(wps[wps.length - 1]);
+      return smoothed;
+    };
+
     const startPathAnimation = (wps: Waypoint[], speedMps: number, rotateDur: number) => {
-      if (wps.length < 2) {
+      const route = smoothWaypoints(wps);
+      if (route.length < 2) {
         endWalkthrough();
         onPresentDoneRef.current?.();
         return;
       }
-      const points = wps.map((wp) => new THREE.Vector3(wp.x, 1.6, wp.y));
+      const points = route.map((wp) => new THREE.Vector3(wp.x, 1.6, wp.y));
       const curve = new THREE.CatmullRomCurve3(points, false, "catmullrom", 0.35);
+      const length = curve.getLength();
       pathAnim = {
         curve,
+        length,
         startTime: performance.now(),
-        duration: Math.max(2200, (curve.getLength() / speedMps) * 1000),
+        duration: Math.max(2200, (length / speedMps) * 1000),
         rotateDur,
         onDone: () => {
           endWalkthrough();
@@ -1914,12 +1932,13 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
       }
       if (pathAnim) {
         const raw = THREE.MathUtils.clamp((timestamp - pathAnim.startTime) / pathAnim.duration, 0, 1);
-        const t = easeInOut(raw);
+        const t = raw;
         const position = pathAnim.curve.getPointAt(t);
-        const lookT = Math.min(1, t + 0.035);
+        const lookAhead = Math.min(0.08, 1.4 / Math.max(pathAnim.length, 1));
+        const lookT = Math.min(1, t + lookAhead);
         const lookPoint = pathAnim.curve.getPointAt(lookT);
         if (lookPoint.distanceToSquared(position) < 0.0001) {
-          lookPoint.copy(pathAnim.curve.getPointAt(Math.max(0, t - 0.035)));
+          lookPoint.copy(pathAnim.curve.getPointAt(Math.max(0, t - lookAhead)));
         }
         lookPoint.y = 1.42;
         camera.position.copy(position);
