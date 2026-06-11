@@ -2194,7 +2194,13 @@ function createFlowBandArrowHead(
   geo.computeVertexNormals();
 
   const group = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.96 });
+  const mat = new THREE.MeshLambertMaterial({
+    color,
+    transparent: true,
+    opacity: 0.96,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
   const head = new THREE.Mesh(geo, mat);
   head.renderOrder = 1.22;
   group.add(head);
