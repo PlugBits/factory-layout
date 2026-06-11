@@ -2140,21 +2140,33 @@ function createFlowBandArrowHead(
   const dx = end.x - start.x;
   const dz = end.y - start.y;
   const len = Math.hypot(dx, dz) || 1;
-  // Flat triangle on floor via ShapeGeometry
+  const ux = dx / len;
+  const uz = dz / len;
   const half = size / 2;
   const depth = size * 1.1;
-  const shape = new THREE.Shape();
-  shape.moveTo(0, half);
-  shape.lineTo(depth, 0);
-  shape.lineTo(0, -half);
-  shape.closePath();
-  const geo = new THREE.ShapeGeometry(shape);
-  const mat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.92 });
+
+  // Build triangle vertices directly in world XZ coordinates
+  // tip at end, base centered behind it
+  const tipX = end.x;
+  const tipZ = end.y;
+  const baseX = end.x - ux * depth;
+  const baseZ = end.y - uz * depth;
+  // perpendicular
+  const px = -uz;
+  const pz = ux;
+
+  const positions = new Float32Array([
+    tipX, y, tipZ,
+    baseX + px * half, y, baseZ + pz * half,
+    baseX - px * half, y, baseZ - pz * half,
+  ]);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geo.setIndex([0, 1, 2]);
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.92, side: THREE.DoubleSide });
   const head = new THREE.Mesh(geo, mat);
-  // rotate flat on XZ plane
-  head.rotation.x = Math.PI / 2;
-  head.rotation.z = -Math.atan2(dz, dx);
-  head.position.set(end.x - (dx / len) * depth * 0.1, y, end.y - (dz / len) * depth * 0.1);
   head.renderOrder = 1.2;
   return head;
 }

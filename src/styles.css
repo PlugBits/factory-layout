@@ -774,8 +774,8 @@ textarea {
 }
 
 .properties {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   border-left: 1px solid #cad3df;
   padding: 0;
@@ -783,15 +783,18 @@ textarea {
 }
 
 .properties-top {
+  flex: 0 1 auto;
   overflow: auto;
   padding: 12px;
   border-bottom: 1px solid #cad3df;
-  max-height: 45%;
+  min-height: 0;
 }
 
 .properties-detail {
+  flex: 1 1 0;
   overflow: auto;
   padding: 12px;
+  min-height: 0;
 }
 
 .properties-divider {
