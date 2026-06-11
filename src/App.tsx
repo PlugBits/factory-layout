@@ -2155,17 +2155,19 @@ function createFlowBandArrowHead(
   const px = -uz;
   const pz = ux;
 
+  const v0x = tipX,          v0z = tipZ;
+  const v1x = baseX + px * half, v1z = baseZ + pz * half;
+  const v2x = baseX - px * half, v2z = baseZ - pz * half;
+
+  // Both winding orders so the triangle is always visible regardless of camera angle
   const positions = new Float32Array([
-    tipX, y, tipZ,
-    baseX + px * half, y, baseZ + pz * half,
-    baseX - px * half, y, baseZ - pz * half,
+    v0x, y, v0z,  v1x, y, v1z,  v2x, y, v2z,
+    v0x, y, v0z,  v2x, y, v2z,  v1x, y, v1z,
   ]);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geo.setIndex([0, 1, 2]);
-  geo.computeVertexNormals();
 
-  const mat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.92, side: THREE.DoubleSide });
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 });
   const head = new THREE.Mesh(geo, mat);
   head.renderOrder = 1.2;
   return head;
