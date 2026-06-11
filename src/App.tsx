@@ -875,7 +875,7 @@ function App() {
         )}
       </aside>
 
-      <main className="workspace" ref={workspaceRef}>
+      <main className={isFullscreen && viewMode === "3d" ? "workspace fullscreen-3d" : "workspace"} ref={workspaceRef}>
         <header className="topbar">
           {viewMode === "2d" ? (
             <div className="zoom-controls">
@@ -954,6 +954,12 @@ function App() {
         </header>
 
         <section className="content">
+          {viewMode === "3d" && isFullscreen ? (
+            <button className="fullscreen-exit-button" onClick={() => void toggleWorkspaceFullscreen()} aria-label="Exit fullscreen">
+              <Minimize2 size={16} />
+              Exit
+            </button>
+          ) : null}
           {viewMode === "2d" ? (
             <div
               className={`board-wrap ${panDrag ? "panning" : ""}`}
@@ -1095,7 +1101,7 @@ function App() {
 
           <aside className="properties">
             <div className="properties-top">
-              {sidebarMode === "equipment" ? (
+              {sidebarMode === "equipment" || (viewMode === "3d" && isFullscreen) ? (
                 <>
                   <div className="panel-title">{text("placedItems")}</div>
                   <div className="placed-list" ref={placedListRef}>

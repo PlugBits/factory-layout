@@ -401,6 +401,18 @@ textarea {
   background: #eef2f6;
 }
 
+.workspace.fullscreen-3d,
+.workspace.fullscreen-3d:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  grid-template-rows: minmax(0, 1fr);
+  background: #eef2f6;
+}
+
+.workspace.fullscreen-3d .topbar {
+  display: none;
+}
+
 .topbar {
   display: flex;
   justify-content: flex-end;
@@ -457,8 +469,33 @@ textarea {
 .content {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
+  position: relative;
   height: 100%;
   min-height: 0;
+}
+
+.workspace.fullscreen-3d .content {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.fullscreen-exit-button {
+  display: none;
+}
+
+.workspace.fullscreen-3d .fullscreen-exit-button {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 31;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: rgba(148, 163, 184, 0.7);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+  color: #172033;
+  font-weight: 800;
+  backdrop-filter: blur(8px);
 }
 
 .board-wrap {
@@ -793,6 +830,20 @@ textarea {
   overflow: hidden;
 }
 
+.workspace.fullscreen-3d .properties {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 30;
+  width: min(300px, calc(100vw - 32px));
+  max-height: min(52vh, 420px);
+  border: 1px solid rgba(148, 163, 184, 0.58);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(8px);
+}
+
 .properties-top {
   flex: 0 1 auto;
   overflow: auto;
@@ -801,11 +852,20 @@ textarea {
   min-height: 0;
 }
 
+.workspace.fullscreen-3d .properties-top {
+  padding: 10px;
+  border-bottom: 0;
+}
+
 .properties-detail {
   flex: 1 1 0;
   overflow: auto;
   padding: 12px;
   min-height: 0;
+}
+
+.workspace.fullscreen-3d .properties-detail {
+  display: none;
 }
 
 .properties-divider {
@@ -824,6 +884,11 @@ textarea {
   max-height: clamp(160px, 28vh, 260px);
   overflow: auto;
   margin-bottom: 8px;
+}
+
+.workspace.fullscreen-3d .placed-list {
+  max-height: calc(min(52vh, 420px) - 44px);
+  margin-bottom: 0;
 }
 
 .placed-item {
