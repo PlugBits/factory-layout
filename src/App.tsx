@@ -215,6 +215,7 @@ function App() {
   const [annotationDrag, setAnnotationDrag] = useState<{ id: string; mode: "move" | "start" | "end"; startX: number; startY: number; original: AnnotationItem } | null>(null);
   const [undoStack, setUndoStack] = useState<ProjectSnapshot[]>([]);
   const [redoStack, setRedoStack] = useState<ProjectSnapshot[]>([]);
+  const [sidebarMode, setSidebarMode] = useState<"equipment" | "annotation">("equipment");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sizeEditId, setSizeEditId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -767,41 +768,67 @@ function App() {
           <button className={viewMode === "3d" ? "active" : ""} onClick={() => setViewMode("3d")}><Eye size={16} />3D</button>
         </div>
 
-        <AnnotationToolbar
-          layerVisible={annotationLayerVisible}
-          activeTool={annotationTool}
-          onToggleLayer={toggleAnnotationLayer}
-          onSetTool={(tool) => {
-            setWaypointMode(false);
-            setAnnotationTool(tool);
-            if (tool) setAnnotationLayerVisible(true);
-          }}
-        />
+        <div className="layer-tab-toggle">
+          <button
+            className={sidebarMode === "equipment" ? "active" : ""}
+            onClick={() => {
+              setSidebarMode("equipment");
+              setAnnotationTool(null);
+              setWaypointMode(false);
+            }}
+          >
+            設備
+          </button>
+          <button
+            className={sidebarMode === "annotation" ? "active" : ""}
+            onClick={() => {
+              setSidebarMode("annotation");
+              setWaypointMode(false);
+              if (annotationLayerVisible === false) toggleAnnotationLayer();
+            }}
+          >
+            アノテーション
+          </button>
+        </div>
 
-        <details className="panel factory-panel">
-          <summary>{text("factorySize")}</summary>
-          <label>{text("width")} m<input type="number" value={factory.width} min={5} step={1} onChange={(event) => updateFactory({ width: Number(event.target.value) })} /></label>
-          <label>{text("depth")} m<input type="number" value={factory.depth} min={5} step={1} onChange={(event) => updateFactory({ depth: Number(event.target.value) })} /></label>
-          <label>{text("grid")} m<input type="number" value={factory.grid} min={0.25} step={0.25} onChange={(event) => updateFactory({ grid: Number(event.target.value) })} /></label>
-          <label>{text("majorGrid")} m<input type="number" value={factory.majorGrid} min={1} step={1} onChange={(event) => updateFactory({ majorGrid: Number(event.target.value) })} /></label>
-        </details>
+        {sidebarMode === "equipment" ? (
+          <>
+            <details className="panel factory-panel">
+              <summary>{text("factorySize")}</summary>
+              <label>{text("width")} m<input type="number" value={factory.width} min={5} step={1} onChange={(event) => updateFactory({ width: Number(event.target.value) })} /></label>
+              <label>{text("depth")} m<input type="number" value={factory.depth} min={5} step={1} onChange={(event) => updateFactory({ depth: Number(event.target.value) })} /></label>
+              <label>{text("grid")} m<input type="number" value={factory.grid} min={0.25} step={0.25} onChange={(event) => updateFactory({ grid: Number(event.target.value) })} /></label>
+              <label>{text("majorGrid")} m<input type="number" value={factory.majorGrid} min={1} step={1} onChange={(event) => updateFactory({ majorGrid: Number(event.target.value) })} /></label>
+            </details>
 
-        <section className="panel template-panel">
-          <div className="panel-title">{text("equipmentTemplates")}</div>
-          <select value={category} onChange={(event) => setCategory(event.target.value as Category)}>
-            {(Object.keys(categoryLabels.ja) as Category[]).map((key) => <option key={key} value={key}>{categoryLabels[language][key]}</option>)}
-          </select>
-          <div className="template-list">
-            {templates.filter((template) => template.category === category).map((template) => (
-              <button key={template.id} className={selectedTemplateId === template.id ? "active" : ""} onClick={() => setSelectedTemplateId(template.id)}>
-                <span style={{ backgroundColor: template.color }}>{template.icon}</span>
-                <strong>{getTemplateName(language, template.id, template.name)}</strong>
-                <small>{template.width} x {template.depth} x {template.height}m</small>
-              </button>
-            ))}
-          </div>
-          <button className="primary-button" onClick={addSelectedTemplate}><Box size={16} />{text("place")}</button>
-        </section>
+            <section className="panel template-panel">
+              <div className="panel-title">{text("equipmentTemplates")}</div>
+              <select value={category} onChange={(event) => setCategory(event.target.value as Category)}>
+                {(Object.keys(categoryLabels.ja) as Category[]).map((key) => <option key={key} value={key}>{categoryLabels[language][key]}</option>)}
+              </select>
+              <div className="template-list">
+                {templates.filter((template) => template.category === category).map((template) => (
+                  <button key={template.id} className={selectedTemplateId === template.id ? "active" : ""} onClick={() => setSelectedTemplateId(template.id)}>
+                    <span style={{ backgroundColor: template.color }}>{template.icon}</span>
+                    <strong>{getTemplateName(language, template.id, template.name)}</strong>
+                    <small>{template.width} x {template.depth} x {template.height}m</small>
+                  </button>
+                ))}
+              </div>
+              <button className="primary-button" onClick={addSelectedTemplate}><Box size={16} />{text("place")}</button>
+            </section>
+          </>
+        ) : (
+          <AnnotationToolbar
+            layerVisible={annotationLayerVisible}
+            activeTool={annotationTool}
+            onToggleLayer={toggleAnnotationLayer}
+            onSetTool={(tool) => {
+              setAnnotationTool(tool);
+              if (tool) setAnnotationLayerVisible(true);
+            }}
+          />
+        )}
       </aside>
 
       <main className="workspace">
@@ -1018,59 +1045,63 @@ function App() {
 
           <aside className="properties">
             <div className="properties-top">
-              <div className="panel-title">{text("placedItems")}</div>
-              <div className="placed-list" ref={placedListRef}>
-                {items.length ? items.map((item, index) => (
-                  <div
-                    key={item.id}
-                    data-item-id={item.id}
-                    data-item-number={index + 1}
-                    className={`placed-item${item.id === selectedId ? " selected" : ""}${item.id === secondSelectedId ? " second-selected" : ""}`}
-                    onClick={(event) => {
-                      if (event.ctrlKey || event.metaKey) {
-                        if (item.id !== selectedId) setSecondSelectedId((prev) => prev === item.id ? null : item.id);
-                      } else {
-                        setSelectedId(item.id);
-                        setSelectedAnnotationId(null);
-                      }
-                    }}
-                  >
-                    <span className="placed-color" style={{ backgroundColor: item.color }} />
-                    <span className="placed-main">
-                      <strong>{displayItemName(item)}</strong>
-                      <small>X {item.x} / Y {item.y}</small>
-                    </span>
-                    <span className="placed-actions">
-                      <button onClick={(event) => { event.stopPropagation(); duplicateItem(item); }} aria-label={text("duplicate")}><Copy size={14} /></button>
-                      <button onClick={(event) => { event.stopPropagation(); deleteItem(item.id); }} aria-label={text("delete")}><Trash2 size={14} /></button>
-                    </span>
+              {sidebarMode === "equipment" ? (
+                <>
+                  <div className="panel-title">{text("placedItems")}</div>
+                  <div className="placed-list" ref={placedListRef}>
+                    {items.length ? items.map((item, index) => (
+                      <div
+                        key={item.id}
+                        data-item-id={item.id}
+                        data-item-number={index + 1}
+                        className={`placed-item${item.id === selectedId ? " selected" : ""}${item.id === secondSelectedId ? " second-selected" : ""}`}
+                        onClick={(event) => {
+                          if (event.ctrlKey || event.metaKey) {
+                            if (item.id !== selectedId) setSecondSelectedId((prev) => prev === item.id ? null : item.id);
+                          } else {
+                            setSelectedId(item.id);
+                            setSelectedAnnotationId(null);
+                          }
+                        }}
+                      >
+                        <span className="placed-color" style={{ backgroundColor: item.color }} />
+                        <span className="placed-main">
+                          <strong>{displayItemName(item)}</strong>
+                          <small>X {item.x} / Y {item.y}</small>
+                        </span>
+                        <span className="placed-actions">
+                          <button onClick={(event) => { event.stopPropagation(); duplicateItem(item); }} aria-label={text("duplicate")}><Copy size={14} /></button>
+                          <button onClick={(event) => { event.stopPropagation(); deleteItem(item.id); }} aria-label={text("delete")}><Trash2 size={14} /></button>
+                        </span>
+                      </div>
+                    )) : (
+                      <p>{text("noPlacedItems")}</p>
+                    )}
                   </div>
-                )) : (
-                  <p>{text("noPlacedItems")}</p>
-                )}
-              </div>
-
-              <div className="properties-divider" />
-
-              <div className="panel-title">Layer Items</div>
-              <AnnotationItemList
-                annotations={annotations}
-                selectedAnnotationId={selectedAnnotationId}
-                onSelect={(id) => {
-                  setSelectedAnnotationId(id);
-                  if (id) { setSelectedId(null); setSecondSelectedId(null); }
-                }}
-              />
+                </>
+              ) : (
+                <>
+                  <div className="panel-title">Layer Items</div>
+                  <AnnotationItemList
+                    annotations={annotations}
+                    selectedAnnotationId={selectedAnnotationId}
+                    onSelect={(id) => {
+                      setSelectedAnnotationId(id);
+                      if (id) { setSelectedId(null); setSecondSelectedId(null); }
+                    }}
+                  />
+                </>
+              )}
             </div>
 
             <div className="properties-detail">
-              {selectedAnnotation ? (
+              {sidebarMode === "annotation" && selectedAnnotation ? (
                 <AnnotationProperties
                   annotation={selectedAnnotation}
                   onUpdate={updateAnnotation}
                   onDelete={deleteAnnotation}
                 />
-              ) : selectedItem && secondItem ? (
+              ) : sidebarMode === "equipment" && selectedItem && secondItem ? (
                 <>
                   <div className="panel-title">{text("distanceSettings")}</div>
                   <div className="two-point-header">
@@ -1108,7 +1139,7 @@ function App() {
                       }} />
                   </label>
                 </>
-              ) : selectedItem ? (
+              ) : sidebarMode === "equipment" && selectedItem ? (
                 <>
                   <div className="panel-title">{text("selected")}</div>
                   <label>{text("name")}<input value={selectedDisplayName} onChange={(event) => updateItem(selectedItem.id, { name: event.target.value })} /></label>

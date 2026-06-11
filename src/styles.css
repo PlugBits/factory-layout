@@ -198,6 +198,31 @@ textarea {
   font-size: 11px;
 }
 
+.layer-tab-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.layer-tab-toggle button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.layer-tab-toggle button.active {
+  border-color: #0f766e;
+  background: #ccfbf1;
+  color: #0f766e;
+  font-weight: 800;
+}
+
 .annotation-panel {
   flex: 0 0 auto;
 }
