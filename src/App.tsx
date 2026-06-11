@@ -1757,6 +1757,32 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
       if (controls) controls.enabled = true;
     };
 
+    const finishPresentation = () => {
+      const center = new THREE.Vector3(factory.width / 2, 0.2, factory.depth / 2);
+      const overviewPos = new THREE.Vector3(
+        factory.width * 0.55,
+        Math.max(factory.width, factory.depth) * 0.7,
+        factory.depth * 1.15
+      );
+      const distance = camera.position.distanceTo(overviewPos);
+      const duration = THREE.MathUtils.clamp(distance * 80, 1800, 4200);
+      startAnim(
+        camera.position.clone(),
+        overviewPos,
+        camera.quaternion.clone(),
+        lookAtQuat(overviewPos, center),
+        duration,
+        () => {
+          if (controls) {
+            controls.target.copy(center);
+            controls.update();
+          }
+          endWalkthrough();
+          onPresentDoneRef.current?.();
+        }
+      );
+    };
+
     // Route playback uses a continuous curve with constant-speed sampling.
     const smoothWaypoints = (wps: Waypoint[]) => {
       if (wps.length <= 2) return wps;
@@ -1775,8 +1801,7 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
     const startPathAnimation = (wps: Waypoint[], speedMps: number, rotateDur: number) => {
       const route = smoothWaypoints(wps);
       if (route.length < 2) {
-        endWalkthrough();
-        onPresentDoneRef.current?.();
+        finishPresentation();
         return;
       }
       const points = route.map((wp) => new THREE.Vector3(wp.x, 1.6, wp.y));
@@ -1789,8 +1814,7 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
         duration: Math.max(2200, (length / speedMps) * 1000),
         rotateDur,
         onDone: () => {
-          endWalkthrough();
-          onPresentDoneRef.current?.();
+          finishPresentation();
         }
       };
     };
@@ -1819,8 +1843,7 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
             if (wps.length > 1) {
               startPathAnimation(wps, speedMps, rotateDur);
             } else {
-              endWalkthrough();
-              onPresentDoneRef.current?.();
+              finishPresentation();
             }
           });
         } else {
@@ -1829,8 +1852,7 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
           const fromQ = camera.quaternion.clone();
           const toQ = lookAtQuat(camera.position, new THREE.Vector3(factory.width / 2, 1.0, factory.depth / 2));
           startAnim(camera.position.clone(), toPos, fromQ, toQ, 2000, () => {
-            endWalkthrough();
-            onPresentDoneRef.current?.();
+            finishPresentation();
           });
         }
       };
