@@ -2044,91 +2044,215 @@ function createAnnotationArrowModel(annotation: AnnotationItem) {
   const group = new THREE.Group();
   const baseColor = new THREE.Color(annotation.color);
   const style = annotation.flowStyle ?? "band";
-  const lineMaterial = new THREE.MeshBasicMaterial({
+  const points = getAnnotationArrowPoints(annotation);
+
+  // Band height above floor and thickness
+  const y = 0.055;
+  const bandThickness = 0.018;
+
+  // Band width by style
+  const bandWidth = style === "markers" ? 0.18 : style === "dashed" ? 0.28 : 0.38;
+
+  const bandMat = new THREE.MeshLambertMaterial({
     color: baseColor,
     transparent: true,
-    opacity: style === "dashed" ? 0.78 : 0.86,
-    depthWrite: false
+    opacity: style === "dashed" ? 0.72 : 0.88,
   });
-  const points = getAnnotationArrowPoints(annotation);
-  const y = 0.42;
-  const radius = style === "markers" ? 0.035 : 0.045;
 
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const start = points[index];
-    const end = points[index + 1];
-    addFloatingArrowSegment(group, start, end, y, radius, style, lineMaterial);
+  for (let i = 0; i < points.length - 1; i++) {
+    const start = points[i];
+    const end = points[i + 1];
+    addFlowBandSegment(group, start, end, y, bandThickness, bandWidth, bandMat, style);
   }
 
+  // Arrow head — flat chevron lying on floor
   const lastStart = points[points.length - 2];
   const lastEnd = points[points.length - 1];
   if (lastStart && lastEnd) {
-    group.add(createFloatingArrowHead(lastStart, lastEnd, y, baseColor));
+    group.add(createFlowBandArrowHead(lastStart, lastEnd, y + 0.002, bandWidth * 2.2, baseColor));
   }
 
-  if (annotation.label.trim()) {
-    const labelPoint = getAnnotationLabelPoint3D(annotation);
-    const label = createAnnotationArrowLabel(annotation);
-    label.position.set(labelPoint.x, 0.82, labelPoint.y);
-    group.add(label);
-  }
+  // Interval signboards along path
+  addFlowSignboards(group, annotation, points, y + 0.01, baseColor);
 
   return group;
 }
 
-function addFloatingArrowSegment(group: THREE.Group, start: { x: number; y: number }, end: { x: number; y: number }, y: number, radius: number, style: ArrowStyle, material: THREE.Material) {
+function addFlowBandSegment(
+  group: THREE.Group,
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  y: number,
+  thickness: number,
+  width: number,
+  material: THREE.Material,
+  style: ArrowStyle
+) {
   const dx = end.x - start.x;
   const dz = end.y - start.y;
   const length = Math.hypot(dx, dz);
   if (length < 0.05) return;
 
   if (style !== "dashed") {
-    group.add(createFloatingCylinder(start, end, y, radius, material));
+    group.add(createFlowBandBox(start, end, y, thickness, width, length, material));
     return;
   }
 
+  // Dashed: alternate filled segments
   const ux = dx / length;
   const uz = dz / length;
-  const dashLength = 1.1;
-  const gapLength = 0.55;
-  for (let cursor = 0; cursor < length - 0.12; cursor += dashLength + gapLength) {
-    const dashEndDistance = Math.min(length, cursor + dashLength);
-    if (dashEndDistance - cursor < 0.22) continue;
-    group.add(createFloatingCylinder(
-      { x: start.x + ux * cursor, y: start.y + uz * cursor },
-      { x: start.x + ux * dashEndDistance, y: start.y + uz * dashEndDistance },
-      y,
-      radius,
-      material
-    ));
+  const dashLen = 1.1;
+  const gapLen = 0.6;
+  for (let cursor = 0; cursor < length - 0.1; cursor += dashLen + gapLen) {
+    const segEnd = Math.min(length, cursor + dashLen);
+    if (segEnd - cursor < 0.2) continue;
+    const s = { x: start.x + ux * cursor, y: start.y + uz * cursor };
+    const e = { x: start.x + ux * segEnd, y: start.y + uz * segEnd };
+    group.add(createFlowBandBox(s, e, y, thickness, width, segEnd - cursor, material));
   }
 }
 
-function createFloatingCylinder(start: { x: number; y: number }, end: { x: number; y: number }, y: number, radius: number, material: THREE.Material) {
+function createFlowBandBox(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  y: number,
+  thickness: number,
+  width: number,
+  length: number,
+  material: THREE.Material
+) {
   const dx = end.x - start.x;
   const dz = end.y - start.y;
-  const length = Math.hypot(dx, dz);
-  const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 10), material);
-  cylinder.position.set((start.x + end.x) / 2, y, (start.y + end.y) / 2);
-  const direction = new THREE.Vector3(dx, 0, dz).normalize();
-  cylinder.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
-  cylinder.renderOrder = 1.2;
-  return cylinder;
+  const band = new THREE.Mesh(new THREE.BoxGeometry(length, thickness, width), material);
+  band.position.set((start.x + end.x) / 2, y + thickness / 2, (start.y + end.y) / 2);
+  band.rotation.y = -Math.atan2(dz, dx);
+  band.renderOrder = 1.1;
+  return band;
 }
 
-function createFloatingArrowHead(start: { x: number; y: number }, end: { x: number; y: number }, y: number, color: THREE.Color) {
+function createFlowBandArrowHead(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  y: number,
+  size: number,
+  color: THREE.Color
+) {
   const dx = end.x - start.x;
   const dz = end.y - start.y;
-  const length = Math.hypot(dx, dz) || 1;
-  const direction = new THREE.Vector3(dx / length, 0, dz / length);
-  const head = new THREE.Mesh(
-    new THREE.ConeGeometry(0.22, 0.58, 18),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false })
-  );
-  head.position.set(end.x - direction.x * 0.18, y, end.y - direction.z * 0.18);
-  head.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
-  head.renderOrder = 1.25;
+  const len = Math.hypot(dx, dz) || 1;
+  // Flat triangle on floor via ShapeGeometry
+  const half = size / 2;
+  const depth = size * 1.1;
+  const shape = new THREE.Shape();
+  shape.moveTo(0, half);
+  shape.lineTo(depth, 0);
+  shape.lineTo(0, -half);
+  shape.closePath();
+  const geo = new THREE.ShapeGeometry(shape);
+  const mat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.92 });
+  const head = new THREE.Mesh(geo, mat);
+  // rotate flat on XZ plane
+  head.rotation.x = Math.PI / 2;
+  head.rotation.z = -Math.atan2(dz, dx);
+  head.position.set(end.x - (dx / len) * depth * 0.1, y, end.y - (dz / len) * depth * 0.1);
+  head.renderOrder = 1.2;
   return head;
+}
+
+function addFlowSignboards(
+  group: THREE.Group,
+  annotation: AnnotationItem,
+  points: Array<{ x: number; y: number }>,
+  y: number,
+  color: THREE.Color
+) {
+  const label = annotation.label.trim();
+  const colorHex = `#${color.getHexString()}`;
+  // One shared texture per arrow
+  const texture = createFlowSignTexture(label, colorHex);
+  const signW = THREE.MathUtils.clamp(0.9 + label.length * 0.08, 1.1, 2.2);
+  const signH = 0.36;
+  const signMat = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const start = points[i];
+    const end = points[i + 1];
+    const dx = end.x - start.x;
+    const dz = end.y - start.y;
+    const length = Math.hypot(dx, dz);
+    if (length < 2.5) continue;
+    const angle = Math.atan2(dz, dx);
+    const count = Math.max(1, Math.min(4, Math.floor(length / 5.0)));
+    for (let step = 1; step <= count; step++) {
+      const t = step / (count + 1);
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(signW, signH), signMat);
+      sign.position.set(start.x + dx * t, y + signH / 2 + 0.01, start.y + dz * t);
+      // Stand upright, face the direction of travel
+      sign.rotation.y = -angle;
+      sign.renderOrder = 1.3;
+      sign.userData.body = annotation.body ?? "";
+      sign.userData.color = colorHex;
+      group.add(sign);
+    }
+  }
+}
+
+function createFlowSignTexture(label: string, color: string) {
+  const W = 640, H = 200;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return new THREE.CanvasTexture(canvas);
+
+  // Background
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = "rgba(255,255,255,0.96)";
+  roundRect(ctx, 12, 12, W - 24, H - 24, 22);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 10;
+  ctx.stroke();
+
+  // Color bar on left
+  ctx.fillStyle = color;
+  roundRect(ctx, 12, 12, 56, H - 24, 22);
+  ctx.fill();
+
+  // Arrow chevron in color bar (white)
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  const ax = 40, ay = H / 2;
+  ctx.moveTo(ax - 10, ay - 26);
+  ctx.lineTo(ax + 14, ay);
+  ctx.lineTo(ax - 10, ay + 26);
+  ctx.lineTo(ax - 2, ay);
+  ctx.closePath();
+  ctx.fill();
+
+  // Label text
+  if (label) {
+    ctx.fillStyle = "#0f172a";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    let fontSize = 72;
+    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+    while (ctx.measureText(label).width > W - 110 && fontSize > 28) {
+      fontSize -= 4;
+      ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+    }
+    ctx.fillText(label, 82, H / 2);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
 }
 
 function createAnnotationArrowLabel(annotation: AnnotationItem) {
