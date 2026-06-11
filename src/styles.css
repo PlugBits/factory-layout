@@ -428,6 +428,38 @@ textarea {
   font-weight: 800;
 }
 
+.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  border-radius: 4px;
+  padding: 6px 10px;
+  border-color: #94a3b8;
+  background: #fff;
+  color: #334155;
+  font-weight: 800;
+}
+
+.custom-template-add {
+  margin-top: 6px;
+}
+
+.delete-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  border-radius: 4px;
+  padding: 6px 10px;
+  border-color: #fecaca;
+  background: #fff;
+  color: #dc2626;
+  font-weight: 800;
+}
+
 .workspace {
   display: grid;
   grid-template-rows: 48px minmax(0, 1fr);

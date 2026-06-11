@@ -120,6 +120,8 @@ const defaultCustomTemplateDraft: Omit<EquipmentTemplate, "id"> = {
   icon: "C"
 };
 
+type TemplateGroup = Category | "custom";
+
 function makeId(prefix: string) {
   return `${prefix}-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`;
 }
@@ -216,10 +218,11 @@ function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [orbitTargetMode, setOrbitTargetMode] = useState<OrbitTargetMode>("factory");
   const [factory, setFactory] = useState(() => makeFactory(draftProject?.factory));
-  const [category, setCategory] = useState<Category>("machine");
+  const [category, setCategory] = useState<TemplateGroup>("machine");
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0].id);
   const [customTemplates, setCustomTemplates] = useState<CustomTemplate[]>(() => draftProject?.customTemplates ?? []);
   const [customTemplateDraft, setCustomTemplateDraft] = useState<Omit<EquipmentTemplate, "id">>(defaultCustomTemplateDraft);
+  const [editingCustomTemplateId, setEditingCustomTemplateId] = useState<string | null>(null);
   const [items, setItems] = useState<LayoutItem[]>(() => draftProject?.items ?? []);
   const [waypoints, setWaypoints] = useState<Waypoint[]>(() => draftProject?.waypoints ?? []);
   const [annotations, setAnnotations] = useState<AnnotationItem[]>(() => draftProject?.annotations ?? []);
@@ -270,6 +273,15 @@ function App() {
   const sizeEditItem = items.find((item) => item.id === sizeEditId) ?? null;
   const allTemplates = useMemo<EquipmentTemplate[]>(() => [...templates, ...customTemplates], [customTemplates]);
   const selectedTemplate = allTemplates.find((template) => template.id === selectedTemplateId) ?? allTemplates[0] ?? templates[0];
+  const visibleTemplates = useMemo<EquipmentTemplate[]>(
+    () => category === "custom" ? customTemplates : templates.filter((template) => template.category === category),
+    [category, customTemplates]
+  );
+  const editingCustomTemplate = editingCustomTemplateId && editingCustomTemplateId !== "new"
+    ? customTemplates.find((template) => template.id === editingCustomTemplateId) ?? null
+    : null;
+  const customTemplateEditor = editingCustomTemplateId === "new" ? customTemplateDraft : editingCustomTemplate;
+  const canPlaceSelectedTemplate = category !== "custom" || customTemplates.some((template) => template.id === selectedTemplateId);
   const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null;
   const text = (key: Parameters<typeof t>[1]) => t(language, key);
   const displayItemName = (item: LayoutItem) => getItemDisplayName(language, item.templateId, item.name);
@@ -304,6 +316,7 @@ function App() {
     setSecondSelectedId(null);
     setSizeEditId(null);
     setSelectedAnnotationId(null);
+    setEditingCustomTemplateId(null);
     setDrag(null);
   };
 
@@ -775,6 +788,7 @@ function App() {
     setCustomTemplates((project.customTemplates ?? []).map((template) => ({ ...template, custom: true })));
     setSelectedId(null);
     setSelectedAnnotationId(null);
+    setEditingCustomTemplateId(null);
   };
 
   const exportPng = async () => {
@@ -801,8 +815,9 @@ function App() {
     };
     recordHistory();
     setCustomTemplates((current) => [...current, template]);
-    setCategory(template.category);
+    setCategory("custom");
     setSelectedTemplateId(template.id);
+    setEditingCustomTemplateId(template.id);
     setCustomTemplateDraft({ ...template, name, icon });
   };
 
@@ -810,6 +825,19 @@ function App() {
     recordHistory();
     setCustomTemplates((current) => current.filter((template) => template.id !== id));
     if (selectedTemplateId === id) setSelectedTemplateId(templates[0].id);
+    if (editingCustomTemplateId === id) setEditingCustomTemplateId(null);
+  };
+
+  const updateEditingCustomTemplate = (patch: Partial<Omit<EquipmentTemplate, "id">>) => {
+    if (editingCustomTemplateId === "new") {
+      setCustomTemplateDraft((current) => ({ ...current, ...patch }));
+      return;
+    }
+    if (!editingCustomTemplateId) return;
+    recordHistory();
+    setCustomTemplates((current) => current.map((template) => (
+      template.id === editingCustomTemplateId ? { ...template, ...patch, custom: true } : template
+    )));
   };
 
   const exportCustomTemplates = () => {
@@ -847,6 +875,7 @@ function App() {
       });
       return [...current, ...withUniqueIds];
     });
+    setCategory("custom");
   };
 
   const toggleWorkspaceFullscreen = async () => {
@@ -931,13 +960,43 @@ function App() {
 
             <section className="panel template-panel">
               <div className="panel-title">{text("equipmentTemplates")}</div>
-              <select value={category} onChange={(event) => setCategory(event.target.value as Category)}>
+              <select value={category} onChange={(event) => {
+                const nextCategory = event.target.value as TemplateGroup;
+                setCategory(nextCategory);
+                if (nextCategory !== "custom") setEditingCustomTemplateId(null);
+              }}>
                 {(Object.keys(categoryLabels.ja) as Category[]).map((key) => <option key={key} value={key}>{categoryLabels[language][key]}</option>)}
+                <option value="custom">{text("customTemplate")}</option>
               </select>
-              <button className="primary-button" onClick={addSelectedTemplate}><Box size={16} />{text("place")}</button>
+              <button className="primary-button" onClick={addSelectedTemplate} disabled={!canPlaceSelectedTemplate}><Box size={16} />{text("place")}</button>
+              {category === "custom" ? (
+                <button
+                  className="secondary-button custom-template-add"
+                  onClick={() => {
+                    setEditingCustomTemplateId("new");
+                    setSelectedId(null);
+                    setSecondSelectedId(null);
+                    setSelectedAnnotationId(null);
+                    setSidebarMode("equipment");
+                    setCustomTemplateDraft(defaultCustomTemplateDraft);
+                  }}
+                >
+                  + {text("addCustomTemplate")}
+                </button>
+              ) : null}
               <div className="template-list">
-                {allTemplates.filter((template) => template.category === category).map((template) => (
-                  <button key={template.id} className={selectedTemplateId === template.id ? "active" : ""} onClick={() => setSelectedTemplateId(template.id)}>
+                {visibleTemplates.map((template) => (
+                  <button key={template.id} className={selectedTemplateId === template.id ? "active" : ""} onClick={() => {
+                    setSelectedTemplateId(template.id);
+                    if (category === "custom") {
+                      setEditingCustomTemplateId(template.id);
+                      setSelectedId(null);
+                      setSecondSelectedId(null);
+                      setSelectedAnnotationId(null);
+                    } else {
+                      setEditingCustomTemplateId(null);
+                    }
+                  }}>
                     <span style={{ backgroundColor: template.color }}>{template.icon}</span>
                     <strong>{getTemplateName(language, template.id, template.name)}</strong>
                     <small>{template.width} x {template.depth} x {template.height}m{template.elevation ? ` / +${template.elevation}m` : ""}</small>
@@ -956,34 +1015,23 @@ function App() {
                     ) : null}
                   </button>
                 ))}
+                {category === "custom" && !customTemplates.length ? (
+                  <p className="section-desc">{text("selectEquipment")}</p>
+                ) : null}
               </div>
-              <details className="custom-template-panel">
-                <summary>{text("customTemplate")}</summary>
-                <label>Name<input value={customTemplateDraft.name} onChange={(event) => setCustomTemplateDraft((current) => ({ ...current, name: event.target.value }))} /></label>
-                <label>Category
-                  <select value={customTemplateDraft.category} onChange={(event) => setCustomTemplateDraft((current) => ({ ...current, category: event.target.value as Category }))}>
-                    {(Object.keys(categoryLabels.ja) as Category[]).map((key) => <option key={key} value={key}>{categoryLabels[language][key]}</option>)}
-                  </select>
-                </label>
-                <label>Icon<input value={customTemplateDraft.icon} maxLength={6} onChange={(event) => setCustomTemplateDraft((current) => ({ ...current, icon: event.target.value }))} /></label>
-                <div className="property-grid">
-                  <label>{text("width")} m<input type="number" min={0.1} step={0.1} value={customTemplateDraft.width} onChange={(event) => setCustomTemplateDraft((current) => ({ ...current, width: Number(event.target.value) }))} /></label>
-                  <label>{text("depth")} m<input type="number" min={0.1} step={0.1} value={customTemplateDraft.depth} onChange={(event) => setCustomTemplateDraft((current) => ({ ...current, depth: Number(event.target.value) }))} /></label>
-                  <label>{text("height")} m<input type="number" min={0.05} step={0.1} value={customTemplateDraft.height} onChange={(event) => setCustomTemplateDraft((current) => ({ ...current, height: Number(event.target.value) }))} /></label>
-                  <label>{text("elevation")} m<input type="number" min={0} step={0.1} value={customTemplateDraft.elevation ?? 0} onChange={(event) => setCustomTemplateDraft((current) => ({ ...current, elevation: Number(event.target.value) }))} /></label>
-                </div>
-                <ColorPicker title={text("color")} value={customTemplateDraft.color} onChange={(color) => setCustomTemplateDraft((current) => ({ ...current, color }))} moreColorLabel={text("moreColor")} />
-                <button className="primary-button" onClick={addCustomTemplate}><Box size={16} />{text("addCustomTemplate")}</button>
-                <div className="template-json-actions">
-                  <button onClick={exportCustomTemplates} disabled={!customTemplates.length}><Download size={14} />{text("exportTemplates")}</button>
-                  <button onClick={() => customTemplatesFileRef.current?.click()}><Upload size={14} />{text("importTemplates")}</button>
-                </div>
-                <input ref={customTemplatesFileRef} hidden type="file" accept="application/json" onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void importCustomTemplates(file);
-                  event.target.value = "";
-                }} />
-              </details>
+              {category === "custom" ? (
+                <>
+                  <div className="template-json-actions">
+                    <button onClick={exportCustomTemplates} disabled={!customTemplates.length}><Download size={14} />{text("exportTemplates")}</button>
+                    <button onClick={() => customTemplatesFileRef.current?.click()}><Upload size={14} />{text("importTemplates")}</button>
+                  </div>
+                  <input ref={customTemplatesFileRef} hidden type="file" accept="application/json" onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void importCustomTemplates(file);
+                    event.target.value = "";
+                  }} />
+                </>
+              ) : null}
             </section>
           </>
         ) : (
@@ -1277,7 +1325,59 @@ function App() {
             </div>
 
             <div className="properties-detail">
-              {sidebarMode === "annotation" && selectedAnnotation ? (
+              {sidebarMode === "equipment" && category === "custom" && customTemplateEditor ? (
+                <>
+                  <div className="panel-title">{editingCustomTemplateId === "new" ? text("addCustomTemplate") : text("customTemplate")}</div>
+                  <label>{text("name")}
+                    <input
+                      value={customTemplateEditor.name}
+                      onChange={(event) => updateEditingCustomTemplate({ name: event.target.value })}
+                    />
+                  </label>
+                  <label>Category
+                    <select
+                      value={customTemplateEditor.category}
+                      onChange={(event) => updateEditingCustomTemplate({ category: event.target.value as Category })}
+                    >
+                      {(Object.keys(categoryLabels.ja) as Category[]).map((key) => (
+                        <option key={key} value={key}>{categoryLabels[language][key]}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>{text("icon")}
+                    <input
+                      value={customTemplateEditor.icon}
+                      maxLength={6}
+                      onChange={(event) => updateEditingCustomTemplate({ icon: event.target.value })}
+                    />
+                  </label>
+                  <div className="property-grid">
+                    <label>{text("width")} m
+                      <input type="number" min={0.1} step={0.1} value={customTemplateEditor.width} onChange={(event) => updateEditingCustomTemplate({ width: Number(event.target.value) })} />
+                    </label>
+                    <label>{text("depth")} m
+                      <input type="number" min={0.1} step={0.1} value={customTemplateEditor.depth} onChange={(event) => updateEditingCustomTemplate({ depth: Number(event.target.value) })} />
+                    </label>
+                    <label>{text("height")} m
+                      <input type="number" min={0.05} step={0.1} value={customTemplateEditor.height} onChange={(event) => updateEditingCustomTemplate({ height: Number(event.target.value) })} />
+                    </label>
+                    <label>{text("elevation")} m
+                      <input type="number" min={0} step={0.1} value={customTemplateEditor.elevation ?? 0} onChange={(event) => updateEditingCustomTemplate({ elevation: Number(event.target.value) })} />
+                    </label>
+                  </div>
+                  <ColorPicker
+                    title={text("color")}
+                    value={customTemplateEditor.color}
+                    onChange={(color) => updateEditingCustomTemplate({ color })}
+                    moreColorLabel={text("moreColor")}
+                  />
+                  {editingCustomTemplateId === "new" ? (
+                    <button className="primary-button" onClick={addCustomTemplate}><Box size={16} />{text("addCustomTemplate")}</button>
+                  ) : editingCustomTemplate ? (
+                    <button className="delete-button" onClick={() => deleteCustomTemplate(editingCustomTemplate.id)}><Trash2 size={16} />{text("delete")}</button>
+                  ) : null}
+                </>
+              ) : sidebarMode === "annotation" && selectedAnnotation ? (
                 <AnnotationProperties
                   annotation={selectedAnnotation}
                   onUpdate={updateAnnotation}
