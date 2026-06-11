@@ -71,7 +71,7 @@ const templates: EquipmentTemplate[] = [
   { id: "dust", name: "集塵機", category: "utility", width: 1.4, depth: 1.4, height: 2.2, color: "#a78bfa", icon: "集" },
   { id: "power", name: "分電盤", category: "utility", width: 1.0, depth: 0.3, height: 1.8, color: "#7c3aed", icon: "電" },
   { id: "crane", name: "クレーン範囲", category: "utility", width: 8.0, depth: 4.0, height: 3.5, color: "#60a5fa", icon: "CR" },
-  { id: "duct", name: "排気ダクト", category: "utility", width: 4.0, depth: 0.4, height: 3.0, color: "#38bdf8", icon: "DX" }
+  { id: "duct", name: "排気ダクト", category: "utility", width: 4.0, depth: 0.4, height: 0.6, elevation: 2.4, color: "#38bdf8", icon: "DX" }
 ];
 
 const itemColorPalette = [
@@ -482,6 +482,7 @@ function App() {
         width: template.width,
         depth: template.depth,
         height: template.height,
+        elevation: template.elevation ?? 0,
         rotation: 0,
         color: template.color,
         icon: template.icon
@@ -1208,6 +1209,7 @@ function App() {
                     <label>{text("width")} m<input type="number" value={selectedItem.width} step={0.1} onChange={(event) => updateItem(selectedItem.id, { width: Number(event.target.value) })} /></label>
                     <label>{text("depth")} m<input type="number" value={selectedItem.depth} step={0.1} onChange={(event) => updateItem(selectedItem.id, { depth: Number(event.target.value) })} /></label>
                     <label>{text("height")} m<input type="number" value={selectedItem.height} step={0.1} onChange={(event) => updateItem(selectedItem.id, { height: Number(event.target.value) })} /></label>
+                    <label>{text("elevation")} m<input type="number" min={0} value={selectedItem.elevation ?? 0} step={0.1} onChange={(event) => updateItem(selectedItem.id, { elevation: Number(event.target.value) })} /></label>
                     <label>{text("rotate")}<select value={selectedItem.rotation} onChange={(event) => updateItem(selectedItem.id, { rotation: Number(event.target.value) as LayoutItem["rotation"] })}>
                       {[0, 90, 180, 270].map((angle) => <option key={angle} value={angle}>{angle}°</option>)}
                     </select></label>
@@ -1380,7 +1382,7 @@ function ThreePreview({ factory, items, annotations, annotationLayerVisible, sel
 
     for (const [index, item] of items.entries()) {
       const model = createEquipmentModel(item);
-      model.position.set(item.x + item.width / 2, 0, item.y + item.depth / 2);
+      model.position.set(item.x + item.width / 2, item.elevation ?? 0, item.y + item.depth / 2);
       model.rotation.y = -THREE.MathUtils.degToRad(item.rotation);
       scene.add(model);
 
@@ -2871,7 +2873,7 @@ function getOrbitTarget(factory: ProjectFile["factory"], items: LayoutItem[], se
   if (mode === "selected" && selected) {
     return {
       x: selected.x + selected.width / 2,
-      y: Math.max(selected.height * 0.45, 0.2),
+      y: (selected.elevation ?? 0) + Math.max(selected.height * 0.45, 0.2),
       z: selected.y + selected.depth / 2
     };
   }

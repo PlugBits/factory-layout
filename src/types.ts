@@ -38,6 +38,7 @@ export type EquipmentTemplate = {
   width: number;
   depth: number;
   height: number;
+  elevation?: number;
   color: string;
   icon: string;
 };
@@ -51,6 +52,7 @@ export type LayoutItem = {
   width: number;
   depth: number;
   height: number;
+  elevation?: number;
   rotation: 0 | 90 | 180 | 270;
   color: string;
   icon: string;
