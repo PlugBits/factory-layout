@@ -236,6 +236,10 @@ textarea {
   overflow: auto;
 }
 
+.annotation-list.annotation-list-panel {
+  max-height: 180px;
+}
+
 .annotation-list button {
   justify-content: flex-start;
   text-align: left;
@@ -745,7 +749,29 @@ textarea {
 }
 
 .properties {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
   border-left: 1px solid #cad3df;
+  padding: 0;
+  overflow: hidden;
+}
+
+.properties-top {
+  overflow: auto;
+  padding: 12px;
+  border-bottom: 1px solid #cad3df;
+}
+
+.properties-detail {
+  overflow: auto;
+  padding: 12px;
+  max-height: 55vh;
+}
+
+.properties-divider {
+  margin: 10px 0;
+  border-top: 1px solid #d7dee9;
 }
 
 .properties p {
@@ -756,9 +782,9 @@ textarea {
 .placed-list {
   display: grid;
   gap: 6px;
-  max-height: 220px;
+  max-height: 180px;
   overflow: auto;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
 }
 
 .placed-item {

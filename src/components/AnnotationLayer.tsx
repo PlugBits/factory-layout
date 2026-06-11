@@ -259,15 +259,12 @@ type AnnotationPanelProps = {
   onSelect: (id: string | null) => void;
 };
 
-export function AnnotationPanel({
-  annotations,
+export function AnnotationToolbar({
   layerVisible,
   activeTool,
-  selectedAnnotationId,
   onToggleLayer,
-  onSetTool,
-  onSelect
-}: AnnotationPanelProps) {
+  onSetTool
+}: Pick<AnnotationPanelProps, "layerVisible" | "activeTool" | "onToggleLayer" | "onSetTool">) {
   return (
     <section className="panel annotation-panel">
       <div className="panel-title">Layer</div>
@@ -283,23 +280,49 @@ export function AnnotationPanel({
           <MessageSquare size={16} />Note
         </button>
       </div>
-      <div className="annotation-list">
-        {annotations.length ? annotations.map((annotation) => (
-          <button
-            key={annotation.id}
-            type="button"
-            className={annotation.id === selectedAnnotationId ? "selected" : ""}
-            onClick={() => onSelect(annotation.id)}
-          >
-            {annotation.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-            {annotation.kind === "arrow" ? <CornerDownRight size={14} /> : <NoteIconView icon={annotation.noteIcon} size={14} />}
-            <span>{annotation.label}</span>
-          </button>
-        )) : (
-          <p>Arrow is added by dragging on the board. Note is added by clicking.</p>
-        )}
-      </div>
     </section>
+  );
+}
+
+export function AnnotationItemList({
+  annotations,
+  selectedAnnotationId,
+  onSelect
+}: Pick<AnnotationPanelProps, "annotations" | "selectedAnnotationId" | "onSelect">) {
+  return (
+    <div className="annotation-list annotation-list-panel">
+      {annotations.length ? annotations.map((annotation) => (
+        <button
+          key={annotation.id}
+          type="button"
+          className={annotation.id === selectedAnnotationId ? "selected" : ""}
+          onClick={() => onSelect(annotation.id)}
+        >
+          {annotation.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+          {annotation.kind === "arrow" ? <CornerDownRight size={14} /> : <NoteIconView icon={annotation.noteIcon} size={14} />}
+          <span>{annotation.label}</span>
+        </button>
+      )) : (
+        <p>Arrow is added by dragging on the board. Note is added by clicking.</p>
+      )}
+    </div>
+  );
+}
+
+export function AnnotationPanel({
+  annotations,
+  layerVisible,
+  activeTool,
+  selectedAnnotationId,
+  onToggleLayer,
+  onSetTool,
+  onSelect
+}: AnnotationPanelProps) {
+  return (
+    <>
+      <AnnotationToolbar layerVisible={layerVisible} activeTool={activeTool} onToggleLayer={onToggleLayer} onSetTool={onSetTool} />
+      <AnnotationItemList annotations={annotations} selectedAnnotationId={selectedAnnotationId} onSelect={onSelect} />
+    </>
   );
 }
 

@@ -15,7 +15,7 @@ import {
   wallSideLabels,
   type Language
 } from "./i18n";
-import { AnnotationLayer, AnnotationPanel } from "./components/AnnotationLayer";
+import { AnnotationLayer, AnnotationToolbar, AnnotationItemList } from "./components/AnnotationLayer";
 import { AnnotationProperties } from "./components/AnnotationProperties";
 import { LayoutItemView } from "./components/LayoutItemView";
 import type {
@@ -167,7 +167,7 @@ function rgbToHex(r: number, g: number, b: number) {
   return `#${toByte(r)}${toByte(g)}${toByte(b)}`;
 }
 
-function ColorPicker({ title, value, onChange }: { title: string; value: string; onChange: (color: string) => void }) {
+export function ColorPicker({ title, value, onChange }: { title: string; value: string; onChange: (color: string) => void }) {
   const rgb = hexToRgb(value);
   const updateRgb = (channel: "r" | "g" | "b", nextValue: number) => {
     onChange(rgbToHex(channel === "r" ? nextValue : rgb.r, channel === "g" ? nextValue : rgb.g, channel === "b" ? nextValue : rgb.b));
@@ -767,23 +767,14 @@ function App() {
           <button className={viewMode === "3d" ? "active" : ""} onClick={() => setViewMode("3d")}><Eye size={16} />3D</button>
         </div>
 
-        <AnnotationPanel
-          annotations={annotations}
+        <AnnotationToolbar
           layerVisible={annotationLayerVisible}
           activeTool={annotationTool}
-          selectedAnnotationId={selectedAnnotationId}
           onToggleLayer={toggleAnnotationLayer}
           onSetTool={(tool) => {
             setWaypointMode(false);
             setAnnotationTool(tool);
             if (tool) setAnnotationLayerVisible(true);
-          }}
-          onSelect={(id) => {
-            setSelectedAnnotationId(id);
-            if (id) {
-              setSelectedId(null);
-              setSecondSelectedId(null);
-            }
           }}
         />
 
@@ -1026,170 +1017,160 @@ function App() {
           )}
 
           <aside className="properties">
-            {selectedAnnotation ? (
-              <AnnotationProperties
-                annotation={selectedAnnotation}
-                onUpdate={updateAnnotation}
-                onDelete={deleteAnnotation}
+            <div className="properties-top">
+              <div className="panel-title">{text("placedItems")}</div>
+              <div className="placed-list" ref={placedListRef}>
+                {items.length ? items.map((item, index) => (
+                  <div
+                    key={item.id}
+                    data-item-id={item.id}
+                    data-item-number={index + 1}
+                    className={`placed-item${item.id === selectedId ? " selected" : ""}${item.id === secondSelectedId ? " second-selected" : ""}`}
+                    onClick={(event) => {
+                      if (event.ctrlKey || event.metaKey) {
+                        if (item.id !== selectedId) setSecondSelectedId((prev) => prev === item.id ? null : item.id);
+                      } else {
+                        setSelectedId(item.id);
+                        setSelectedAnnotationId(null);
+                      }
+                    }}
+                  >
+                    <span className="placed-color" style={{ backgroundColor: item.color }} />
+                    <span className="placed-main">
+                      <strong>{displayItemName(item)}</strong>
+                      <small>X {item.x} / Y {item.y}</small>
+                    </span>
+                    <span className="placed-actions">
+                      <button onClick={(event) => { event.stopPropagation(); duplicateItem(item); }} aria-label={text("duplicate")}><Copy size={14} /></button>
+                      <button onClick={(event) => { event.stopPropagation(); deleteItem(item.id); }} aria-label={text("delete")}><Trash2 size={14} /></button>
+                    </span>
+                  </div>
+                )) : (
+                  <p>{text("noPlacedItems")}</p>
+                )}
+              </div>
+
+              <div className="properties-divider" />
+
+              <div className="panel-title">Layer Items</div>
+              <AnnotationItemList
+                annotations={annotations}
+                selectedAnnotationId={selectedAnnotationId}
+                onSelect={(id) => {
+                  setSelectedAnnotationId(id);
+                  if (id) { setSelectedId(null); setSecondSelectedId(null); }
+                }}
               />
-            ) : (
-              <>
-            <div className="panel-title">{text("placedItems")}</div>
-            <div className="placed-list" ref={placedListRef}>
-              {items.length ? items.map((item, index) => (
-                <div
-                  key={item.id}
-                  data-item-id={item.id}
-                  data-item-number={index + 1}
-                  className={`placed-item${item.id === selectedId ? " selected" : ""}${item.id === secondSelectedId ? " second-selected" : ""}`}
-                  onClick={(event) => {
-                    if (event.ctrlKey || event.metaKey) {
-                      if (item.id !== selectedId) setSecondSelectedId((prev) => prev === item.id ? null : item.id);
-                    } else {
-                          setSelectedId(item.id);
-                          setSelectedAnnotationId(null);
-                    }
-                  }}
-                >
-                  <span className="placed-color" style={{ backgroundColor: item.color }} />
-                  <span className="placed-main">
-                    <strong>{displayItemName(item)}</strong>
-                    <small>X {item.x} / Y {item.y}</small>
-                  </span>
-                  <span className="placed-actions">
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        duplicateItem(item);
-                      }}
-                      aria-label={text("duplicate")}
-                    >
-                      <Copy size={14} />
-                    </button>
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        deleteItem(item.id);
-                      }}
-                      aria-label={text("delete")}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </span>
-                </div>
-              )) : (
-                <p>{text("noPlacedItems")}</p>
-              )}
             </div>
 
-            {/* 2点選択中：間隔設定のみ表示 */}
-            {selectedItem && secondItem ? (
-              <>
-                <div className="panel-title">{text("distanceSettings")}</div>
-                <div className="two-point-header">
-                  <span className="two-point-badge two-point-a">A</span>
-                  <span className="two-point-name">{selectedDisplayName}</span>
-                </div>
-                <div className="two-point-header">
-                  <span className="two-point-badge two-point-b">B</span>
-                  <span className="two-point-name">{secondDisplayName}</span>
-                </div>
-                <label>{text("referencePoint")}
-                  <select value={edgePair} onChange={(event) => {
-                    const pair = event.target.value as EdgePair;
-                    setEdgePair(pair);
-                    // 辺が変わったら現在値を読み直す（入力値は更新しない→ユーザーが次に入力したときに適用）
-                    const cur = computeEdgeGap(selectedItem, secondItem, pair);
-                    setTwoPointTargetGap(Number(cur.toFixed(3)));
-                  }}>
-                    {(Object.keys(edgePairLabels.ja) as EdgePair[]).map((k) => (
-                      <option key={k} value={k}>{edgePairLabels[language][k]}</option>
-                    ))}
-                  </select>
-                </label>
-                {currentGap !== null && (
-                  <div className="two-point-gaps">
-                    <span>{text("current")}: <strong>{currentGap.toFixed(3)} m</strong></span>
-                    <span className="two-point-hint">{text("overlapNote")}</span>
+            <div className="properties-detail">
+              {selectedAnnotation ? (
+                <AnnotationProperties
+                  annotation={selectedAnnotation}
+                  onUpdate={updateAnnotation}
+                  onDelete={deleteAnnotation}
+                />
+              ) : selectedItem && secondItem ? (
+                <>
+                  <div className="panel-title">{text("distanceSettings")}</div>
+                  <div className="two-point-header">
+                    <span className="two-point-badge two-point-a">A</span>
+                    <span className="two-point-name">{selectedDisplayName}</span>
                   </div>
-                )}
-                <label>{text("targetGap")} m
-                  <input type="number" value={twoPointTargetGap} step={0.01}
-                    onChange={(event) => {
-                      const gap = Number(event.target.value);
-                      setTwoPointTargetGap(gap);
-                      applyTwoPointGap(gap, edgePair);
-                    }} />
-                </label>
-              </>
-            ) : (
-              <>
-                <div className="panel-title">{text("selected")}</div>
-                {selectedItem ? (
-                  <>
-                    <label>{text("name")}<input value={selectedDisplayName} onChange={(event) => updateItem(selectedItem.id, { name: event.target.value })} /></label>
-                    <label>{text("icon")}<input value={selectedItem.icon} maxLength={6} onChange={(event) => updateItem(selectedItem.id, { icon: event.target.value })} /></label>
-                    <label>X m<input type="number" value={selectedItem.x} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { x: Number(event.target.value) })} /></label>
-                    <label>Y m<input type="number" value={selectedItem.y} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { y: Number(event.target.value) })} /></label>
-                    <label>{text("width")} m<input type="number" value={selectedItem.width} step={0.1} onChange={(event) => updateItem(selectedItem.id, { width: Number(event.target.value) })} /></label>
-                    <label>{text("depth")} m<input type="number" value={selectedItem.depth} step={0.1} onChange={(event) => updateItem(selectedItem.id, { depth: Number(event.target.value) })} /></label>
-                    <label>{text("height")} m<input type="number" value={selectedItem.height} step={0.1} onChange={(event) => updateItem(selectedItem.id, { height: Number(event.target.value) })} /></label>
-                    <label>{text("rotate")}<select value={selectedItem.rotation} onChange={(event) => updateItem(selectedItem.id, { rotation: Number(event.target.value) as LayoutItem["rotation"] })}>
-                      {[0, 90, 180, 270].map((angle) => <option key={angle} value={angle}>{angle}°</option>)}
-                    </select></label>
-                    {selectedItem.templateId === "forklift-aisle" ? (
-                      <details className="route-sign-panel">
-                        <summary>Floor Route Signs</summary>
-                        <label>Traffic direction
-                          <select
-                            value={selectedItem.trafficDirection ?? "none"}
-                            onChange={(event) => {
-                              const trafficDirection = event.target.value as TrafficDirection;
-                              updateItem(selectedItem.id, {
-                                trafficDirection,
-                                showFloorSigns: trafficDirection === "none" ? selectedItem.showFloorSigns : true,
-                                floorLabel: selectedItem.floorLabel ?? (trafficDirection === "two-way" ? "TWO WAY" : "ONE WAY")
-                              });
-                            }}
-                          >
-                            {trafficDirectionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                          </select>
-                        </label>
-                        <label>Floor label
-                          <input
-                            value={selectedItem.floorLabel ?? ((selectedItem.trafficDirection ?? "none") === "two-way" ? "TWO WAY" : "ONE WAY")}
-                            onChange={(event) => updateItem(selectedItem.id, { floorLabel: event.target.value })}
-                          />
-                        </label>
-                        <ColorPicker
-                          title="Arrow color"
-                          value={selectedItem.routeSignColor ?? "#0f766e"}
-                          onChange={(color) => updateItem(selectedItem.id, { routeSignColor: color })}
+                  <div className="two-point-header">
+                    <span className="two-point-badge two-point-b">B</span>
+                    <span className="two-point-name">{secondDisplayName}</span>
+                  </div>
+                  <label>{text("referencePoint")}
+                    <select value={edgePair} onChange={(event) => {
+                      const pair = event.target.value as EdgePair;
+                      setEdgePair(pair);
+                      const cur = computeEdgeGap(selectedItem, secondItem, pair);
+                      setTwoPointTargetGap(Number(cur.toFixed(3)));
+                    }}>
+                      {(Object.keys(edgePairLabels.ja) as EdgePair[]).map((k) => (
+                        <option key={k} value={k}>{edgePairLabels[language][k]}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {currentGap !== null && (
+                    <div className="two-point-gaps">
+                      <span>{text("current")}: <strong>{currentGap.toFixed(3)} m</strong></span>
+                      <span className="two-point-hint">{text("overlapNote")}</span>
+                    </div>
+                  )}
+                  <label>{text("targetGap")} m
+                    <input type="number" value={twoPointTargetGap} step={0.01}
+                      onChange={(event) => {
+                        const gap = Number(event.target.value);
+                        setTwoPointTargetGap(gap);
+                        applyTwoPointGap(gap, edgePair);
+                      }} />
+                  </label>
+                </>
+              ) : selectedItem ? (
+                <>
+                  <div className="panel-title">{text("selected")}</div>
+                  <label>{text("name")}<input value={selectedDisplayName} onChange={(event) => updateItem(selectedItem.id, { name: event.target.value })} /></label>
+                  <label>{text("icon")}<input value={selectedItem.icon} maxLength={6} onChange={(event) => updateItem(selectedItem.id, { icon: event.target.value })} /></label>
+                  <label>X m<input type="number" value={selectedItem.x} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { x: Number(event.target.value) })} /></label>
+                  <label>Y m<input type="number" value={selectedItem.y} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { y: Number(event.target.value) })} /></label>
+                  <label>{text("width")} m<input type="number" value={selectedItem.width} step={0.1} onChange={(event) => updateItem(selectedItem.id, { width: Number(event.target.value) })} /></label>
+                  <label>{text("depth")} m<input type="number" value={selectedItem.depth} step={0.1} onChange={(event) => updateItem(selectedItem.id, { depth: Number(event.target.value) })} /></label>
+                  <label>{text("height")} m<input type="number" value={selectedItem.height} step={0.1} onChange={(event) => updateItem(selectedItem.id, { height: Number(event.target.value) })} /></label>
+                  <label>{text("rotate")}<select value={selectedItem.rotation} onChange={(event) => updateItem(selectedItem.id, { rotation: Number(event.target.value) as LayoutItem["rotation"] })}>
+                    {[0, 90, 180, 270].map((angle) => <option key={angle} value={angle}>{angle}°</option>)}
+                  </select></label>
+                  {selectedItem.templateId === "forklift-aisle" ? (
+                    <details className="route-sign-panel">
+                      <summary>Floor Route Signs</summary>
+                      <label>Traffic direction
+                        <select
+                          value={selectedItem.trafficDirection ?? "none"}
+                          onChange={(event) => {
+                            const trafficDirection = event.target.value as TrafficDirection;
+                            updateItem(selectedItem.id, {
+                              trafficDirection,
+                              showFloorSigns: trafficDirection === "none" ? selectedItem.showFloorSigns : true,
+                              floorLabel: selectedItem.floorLabel ?? (trafficDirection === "two-way" ? "TWO WAY" : "ONE WAY")
+                            });
+                          }}
+                        >
+                          {trafficDirectionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                      </label>
+                      <label>Floor label
+                        <input
+                          value={selectedItem.floorLabel ?? ((selectedItem.trafficDirection ?? "none") === "two-way" ? "TWO WAY" : "ONE WAY")}
+                          onChange={(event) => updateItem(selectedItem.id, { floorLabel: event.target.value })}
                         />
-                        <label className="inline-toggle">
-                          <input
-                            type="checkbox"
-                            checked={selectedItem.showFloorSigns !== false}
-                            onChange={(event) => updateItem(selectedItem.id, { showFloorSigns: event.target.checked })}
-                          />
-                          Show floor signs
-                        </label>
-                      </details>
-                    ) : null}
-                    <ColorPicker
-                      title={text("color")}
-                      value={selectedItem.color}
-                      onChange={(color) => updateItem(selectedItem.id, { color })}
-                    />
-                    <p className="section-desc" style={{ marginTop: 8 }}>{text("twoPointHint")}</p>
-                  </>
-                ) : (
-                  <p>{text("selectEquipment")}</p>
-                )}
-              </>
-            )}
-              </>
-            )}
+                      </label>
+                      <ColorPicker
+                        title="Arrow color"
+                        value={selectedItem.routeSignColor ?? "#0f766e"}
+                        onChange={(color) => updateItem(selectedItem.id, { routeSignColor: color })}
+                      />
+                      <label className="inline-toggle">
+                        <input
+                          type="checkbox"
+                          checked={selectedItem.showFloorSigns !== false}
+                          onChange={(event) => updateItem(selectedItem.id, { showFloorSigns: event.target.checked })}
+                        />
+                        Show floor signs
+                      </label>
+                    </details>
+                  ) : null}
+                  <ColorPicker
+                    title={text("color")}
+                    value={selectedItem.color}
+                    onChange={(color) => updateItem(selectedItem.id, { color })}
+                  />
+                  <p className="section-desc" style={{ marginTop: 8 }}>{text("twoPointHint")}</p>
+                </>
+              ) : (
+                <p>{text("selectEquipment")}</p>
+              )}
+            </div>
           </aside>
         </section>
       </main>

@@ -1,5 +1,6 @@
 import { Info, MessageSquare, Trash2, TriangleAlert } from "lucide-react";
-import { annotationColors, arrowFlowTypeOptions, arrowShapeOptions, arrowStyleOptions, noteIconOptions } from "./AnnotationLayer";
+import { arrowFlowTypeOptions, arrowShapeOptions, arrowStyleOptions, noteIconOptions } from "./AnnotationLayer";
+import { ColorPicker } from "../App";
 import type { AnnotationItem, ArrowFlowType, ArrowShape, ArrowStyle, NoteIcon } from "../types";
 
 type AnnotationPropertiesProps = {
@@ -99,21 +100,11 @@ export function AnnotationProperties({ annotation, onUpdate, onDelete }: Annotat
           </label>
         </>
       )}
-      <div className="annotation-color-block">
-        <div className="field-title">Color</div>
-        <div className="annotation-color-grid">
-          {annotationColors.map((color) => (
-            <button
-              key={color.value}
-              type="button"
-              className={annotation.color.toLowerCase() === color.value ? "color-swatch active" : "color-swatch"}
-              title={color.label}
-              style={{ backgroundColor: color.value }}
-              onClick={() => onUpdate(annotation.id, { color: color.value })}
-            />
-          ))}
-        </div>
-      </div>
+      <ColorPicker
+        title="Color"
+        value={annotation.color}
+        onChange={(color) => onUpdate(annotation.id, { color })}
+      />
       <label className="inline-toggle">
         <input type="checkbox" checked={annotation.visible} onChange={(event) => onUpdate(annotation.id, { visible: event.target.checked })} />
         Visible
