@@ -1,6 +1,6 @@
 import { Info, MessageSquare, Trash2, TriangleAlert } from "lucide-react";
 import { arrowFlowTypeOptions, arrowShapeOptions, arrowStyleOptions, noteIconOptions } from "./AnnotationLayer";
-import { ColorPicker } from "../App";
+import { ColorPicker } from "./ColorPicker";
 import type { AnnotationItem, ArrowFlowType, ArrowShape, ArrowStyle, NoteIcon } from "../types";
 
 type AnnotationPropertiesProps = {
