@@ -132,11 +132,24 @@ function App() {
     () => items.map((item) => ({ ...item, name: getItemDisplayName(language, item.templateId, item.name) })),
     [items, language]
   );
-  const renderItems = useMemo(
-    () => [...items].sort((left, right) => {
-      const layerOf = (item: typeof left) => isRoomItem(item) ? 0 : isAreaItem(item) ? 1 : 2;
-      return layerOf(left) - layerOf(right);
-    }),
+  const renderItems = useMemo(() => {
+    const depthOf = (item: LayoutItem): number => {
+      if (!item.parentRoomId) return 0;
+      const parent = items.find((i) => i.id === item.parentRoomId);
+      return parent ? depthOf(parent) + 1 : 0;
+    };
+    return [...items]
+      .map((item) => ({ item, depth: depthOf(item) }))
+      .sort((a, b) => {
+        const layerOf = (item: LayoutItem, depth: number) =>
+          isRoomItem(item) ? depth : isAreaItem(item) ? 100 : 200;
+        return layerOf(a.item, a.depth) - layerOf(b.item, b.depth);
+      })
+      .map(({ item, depth }) => ({
+        item,
+        zIndex: isRoomItem(item) ? 2 + depth : isAreaItem(item) ? 1 : 5
+      }));
+  },
     [items]
   );
 
@@ -1153,7 +1166,7 @@ function App() {
                     {factory.walls?.[side] ? text("wall") : ""}
                   </button>
                 ))}
-                {renderItems.map((item) => (
+                {renderItems.map(({ item, zIndex }) => (
                   <LayoutItemView
                     key={item.id}
                     item={item}
@@ -1161,6 +1174,7 @@ function App() {
                     secondSelected={item.id === secondSelectedId}
                     area={isAreaItem(item)}
                     pxPerMeter={pxPerMeter}
+                    zIndex={zIndex}
                     onPointerDown={(event) => startDrag(event, item)}
                     onDoubleClick={() => setSizeEditId(item.id)}
                   />

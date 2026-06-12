@@ -7,6 +7,7 @@ type LayoutItemViewProps = {
   secondSelected: boolean;
   area: boolean;
   pxPerMeter: number;
+  zIndex?: number;
   onPointerDown: (event: React.PointerEvent) => void;
   onDoubleClick: () => void;
 };
@@ -17,6 +18,7 @@ export function LayoutItemView({
   secondSelected,
   area,
   pxPerMeter,
+  zIndex,
   onPointerDown,
   onDoubleClick
 }: LayoutItemViewProps) {
@@ -41,7 +43,7 @@ export function LayoutItemView({
           width: displayWidth * pxPerMeter,
           height: displayDepth * pxPerMeter,
           "--room-color": item.color,
-          zIndex: 2
+          zIndex: zIndex ?? 2
         } as CSSProperties}
         data-rotation={item.rotation}
         onPointerDown={onPointerDown}
