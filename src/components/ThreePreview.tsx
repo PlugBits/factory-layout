@@ -1465,6 +1465,8 @@ function addCraneRangeFrame(group: THREE.Group, width: number, depth: number, he
 }
 
 function addTopIcon(group: THREE.Group, item: LayoutItem, width: number, depth: number, height: number) {
+  if (item.show3dLabel === false) return;
+
   const texture = createTopIconTexture(item);
 
   if (isAreaItem(item)) {

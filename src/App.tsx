@@ -1468,6 +1468,14 @@ function App() {
                       {[0, 90, 180, 270].map((angle) => <option key={angle} value={angle}>{angle}°</option>)}
                     </select></label>
                   </div>
+                  <label className="inline-toggle">
+                    <input
+                      type="checkbox"
+                      checked={selectedItem.show3dLabel !== false}
+                      onChange={(event) => updateItem(selectedItem.id, { show3dLabel: event.target.checked })}
+                    />
+                    {text("show3dLabel")}
+                  </label>
                   {selectedItem.templateId === "forklift-aisle" ? (
                     <details className="route-sign-panel">
                       <summary>{text("floorRouteSigns")}</summary>
