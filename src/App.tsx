@@ -17,6 +17,7 @@ import { AnnotationProperties } from "./components/AnnotationProperties";
 import { LayoutItemView } from "./components/LayoutItemView";
 import { ColorPicker } from "./components/ColorPicker";
 import { ThreePreview } from "./components/ThreePreview";
+import { DimensionLayer } from "./components/DimensionLayer";
 import {
   templates,
   wallSides,
@@ -37,6 +38,7 @@ import type {
   AnnotationKind,
   Category,
   CustomTemplate,
+  DimensionLine,
   EdgePair,
   EquipmentTemplate,
   EquipmentTemplateType,
@@ -68,6 +70,8 @@ function App() {
   const [annotations, setAnnotations] = useState<AnnotationItem[]>(() => draftProject?.annotations ?? []);
   const [annotationLayerVisible, setAnnotationLayerVisible] = useState(() => draftProject?.annotationLayerVisible ?? true);
   const [annotationTool, setAnnotationTool] = useState<AnnotationKind | null>(null);
+  const [dimensions, setDimensions] = useState<DimensionLine[]>(() => draftProject?.dimensions ?? []);
+  const [dimensionTool, setDimensionTool] = useState(false);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [annotationDrag, setAnnotationDrag] = useState<{ id: string; mode: "move" | "start" | "end"; startX: number; startY: number; original: AnnotationItem } | null>(null);
   const [undoStack, setUndoStack] = useState<ProjectSnapshot[]>([]);
@@ -142,7 +146,8 @@ function App() {
     waypoints: waypoints.map((waypoint) => ({ ...waypoint })),
     annotations: annotations.map((annotation) => ({ ...annotation })),
     annotationLayerVisible,
-    customTemplates: customTemplates.map((template) => ({ ...template }))
+    customTemplates: customTemplates.map((template) => ({ ...template })),
+    dimensions: dimensions.map((d) => ({ ...d }))
   });
 
   const applyProjectSnapshot = (snapshot: ProjectSnapshot) => {
@@ -152,6 +157,7 @@ function App() {
     setAnnotations((snapshot.annotations ?? []).map((annotation) => ({ ...annotation })));
     setAnnotationLayerVisible(snapshot.annotationLayerVisible ?? true);
     setCustomTemplates((snapshot.customTemplates ?? []).map((template) => ({ ...template, custom: true })));
+    setDimensions((snapshot.dimensions ?? []).map((d) => ({ ...d })));
     setSelectedId(null);
     setSecondSelectedId(null);
     setSizeEditId(null);
@@ -437,13 +443,13 @@ function App() {
   }, [selectedId]);
 
   useEffect(() => {
-    const project: ProjectFile = { version: 1, factory, items, waypoints, annotations, annotationLayerVisible, customTemplates };
+    const project: ProjectFile = { version: 1, factory, items, waypoints, annotations, annotationLayerVisible, customTemplates, dimensions };
     try {
       window.localStorage.setItem(draftStorageKey, JSON.stringify(project));
     } catch {
       // Autosave is best-effort; JSON export still works when storage is unavailable.
     }
-  }, [factory, items, waypoints, annotations, annotationLayerVisible, customTemplates]);
+  }, [factory, items, waypoints, annotations, annotationLayerVisible, customTemplates, dimensions]);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -554,11 +560,41 @@ function App() {
     if (!item) return;
     const rawX = (event.clientX - rect.left) / pxPerMeter - drag.dx;
     const rawY = (event.clientY - rect.top) / pxPerMeter - drag.dy;
-    moveItemTo(item, rawX, rawY, false);
+    const bounds = getItemPositionBounds(item, factory);
+    const nextX = snap(clamp(rawX, bounds.minX, bounds.maxX), factory.grid);
+    const nextY = snap(clamp(rawY, bounds.minY, bounds.maxY), factory.grid);
+    const dx = nextX - item.x;
+    const dy = nextY - item.y;
+    if (dx === 0 && dy === 0) return;
+    if (isRoomItem(item)) {
+      setItems((current) => current.map((entry) => {
+        if (entry.id === item.id) return { ...entry, x: nextX, y: nextY };
+        if (entry.parentRoomId === item.id) return { ...entry, x: Number((entry.x + dx).toFixed(3)), y: Number((entry.y + dy).toFixed(3)) };
+        return entry;
+      }));
+    } else {
+      moveItemTo(item, rawX, rawY, false);
+    }
   };
 
   const endDrag = (event: React.PointerEvent) => {
     if (drag) event.currentTarget.releasePointerCapture(event.pointerId);
+    const droppedItem = drag ? items.find((entry) => entry.id === drag.id) : null;
+    if (droppedItem && !isRoomItem(droppedItem)) {
+      const cx = droppedItem.x + droppedItem.width / 2;
+      const cy = droppedItem.y + droppedItem.depth / 2;
+      const containingRoom = items.find(
+        (entry) => isRoomItem(entry) && entry.id !== droppedItem.id &&
+          cx >= entry.x && cx <= entry.x + entry.width &&
+          cy >= entry.y && cy <= entry.y + entry.depth
+      );
+      const newParentRoomId = containingRoom?.id ?? undefined;
+      if (newParentRoomId !== droppedItem.parentRoomId) {
+        setItems((current) => current.map((entry) =>
+          entry.id === droppedItem.id ? { ...entry, parentRoomId: newParentRoomId } : entry
+        ));
+      }
+    }
     const beforeDrag = dragStartSnapshotRef.current;
     if (beforeDrag && !snapshotsEqual(beforeDrag, makeProjectSnapshot())) {
       recordHistory(beforeDrag);
@@ -604,7 +640,7 @@ function App() {
   };
 
   const saveJson = () => {
-    const project: ProjectFile = { version: 1, factory, items, waypoints, annotations, annotationLayerVisible, customTemplates };
+    const project: ProjectFile = { version: 1, factory, items, waypoints, annotations, annotationLayerVisible, customTemplates, dimensions };
     downloadBlob(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" }), "factory-layout.json");
   };
 
@@ -622,6 +658,7 @@ function App() {
     setAnnotations(project.annotations ?? []);
     setAnnotationLayerVisible(project.annotationLayerVisible ?? true);
     setCustomTemplates((project.customTemplates ?? []).map((template) => ({ ...template, custom: true })));
+    setDimensions(project.dimensions ?? []);
     setSelectedId(null);
     setSelectedAnnotationId(null);
     setEditingCustomTemplateId(null);
@@ -934,6 +971,19 @@ function App() {
               {text("clearRoute")} ({waypoints.length})
             </button>
           ) : null}
+          {viewMode === "2d" ? (
+            <button
+              className={dimensionTool ? "active view-button" : "view-button"}
+              onClick={() => {
+                setDimensionTool((v) => !v);
+                setAnnotationTool(null);
+                setWaypointMode(false);
+              }}
+              title="寸法線モード（要素の点をクリックして距離を測定）"
+            >
+              📐 寸法線
+            </button>
+          ) : null}
           {viewMode === "3d" ? (
             <span className="present-speed-controls">
               <label className="speed-label">
@@ -1094,6 +1144,20 @@ function App() {
                     onDoubleClick={() => setSizeEditId(item.id)}
                   />
                 ))}
+                <DimensionLayer
+                  items={items}
+                  dimensions={dimensions}
+                  pxPerMeter={pxPerMeter}
+                  active={dimensionTool}
+                  onAdd={(dim) => {
+                    recordHistory();
+                    setDimensions((current) => [...current, dim]);
+                  }}
+                  onDelete={(id) => {
+                    recordHistory();
+                    setDimensions((current) => current.filter((d) => d.id !== id));
+                  }}
+                />
               </div>
             </div>
           ) : (

@@ -1,4 +1,4 @@
-import type { EdgePair, LayoutItem, ProjectFile } from "../types";
+import type { EdgePair, LayoutItem, ProjectFile, SnapPointKey } from "../types";
 
 export function snap(value: number, grid: number) {
   if (!grid) return value;
@@ -106,6 +106,20 @@ export function autoDetectEdgePair(A: LayoutItem, B: LayoutItem): EdgePair {
   const dy = b.centerY - a.centerY;
   if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? "right-left" : "left-right";
   return dy >= 0 ? "bottom-top" : "top-bottom";
+}
+
+export function getSnapPoints(item: LayoutItem): Record<SnapPointKey, { x: number; y: number }> {
+  const b = getVisualBounds(item);
+  return {
+    tl: { x: b.left,    y: b.top },
+    tc: { x: b.centerX, y: b.top },
+    tr: { x: b.right,   y: b.top },
+    ml: { x: b.left,    y: b.centerY },
+    mr: { x: b.right,   y: b.centerY },
+    bl: { x: b.left,    y: b.bottom },
+    bc: { x: b.centerX, y: b.bottom },
+    br: { x: b.right,   y: b.bottom }
+  };
 }
 
 export function getItemPositionBounds(item: LayoutItem, factory: ProjectFile["factory"]) {

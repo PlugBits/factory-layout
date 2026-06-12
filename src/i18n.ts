@@ -498,12 +498,12 @@ export function formatText(text: string, values: Record<string, string | number>
 }
 
 export const categoryLabels: Record<Language, Record<string, string>> = {
-  ja: { machine: "加工設備", logistics: "搬送・物流", work: "検査・作業", building: "建屋", utility: "ユーティリティ", safety: "安全" },
-  en: { machine: "Machining", logistics: "Logistics", work: "Inspection / Work", building: "Building", utility: "Utilities", safety: "Safety" },
-  zh: { machine: "加工设备", logistics: "搬送・物流", work: "检查・作业", building: "建筑", utility: "公用设施", safety: "安全" },
-  id: { machine: "Pemrosesan", logistics: "Logistik", work: "Inspeksi / Kerja", building: "Bangunan", utility: "Utilitas", safety: "Keselamatan" },
-  th: { machine: "เครื่องจักร", logistics: "ขนส่ง/โลจิสติกส์", work: "ตรวจสอบ/ทำงาน", building: "อาคาร", utility: "สาธารณูปโภค", safety: "ความปลอดภัย" },
-  vi: { machine: "Gia công", logistics: "Vận chuyển / Logistics", work: "Kiểm tra / Làm việc", building: "Nhà xưởng", utility: "Tiện ích", safety: "An toàn" }
+  ja: { machine: "加工設備", logistics: "搬送・物流", work: "検査・作業", office: "オフィス", building: "建屋", utility: "ユーティリティ", safety: "安全" },
+  en: { machine: "Machining", logistics: "Logistics", work: "Inspection / Work", office: "Office", building: "Building", utility: "Utilities", safety: "Safety" },
+  zh: { machine: "加工设备", logistics: "搬送・物流", work: "检查・作业", office: "办公室", building: "建筑", utility: "公用设施", safety: "安全" },
+  id: { machine: "Pemrosesan", logistics: "Logistik", work: "Inspeksi / Kerja", office: "Kantor", building: "Bangunan", utility: "Utilitas", safety: "Keselamatan" },
+  th: { machine: "เครื่องจักร", logistics: "ขนส่ง/โลจิสติกส์", work: "ตรวจสอบ/ทำงาน", office: "สำนักงาน", building: "อาคาร", utility: "สาธารณูปโภค", safety: "ความปลอดภัย" },
+  vi: { machine: "Gia công", logistics: "Vận chuyển / Logistics", work: "Kiểm tra / Làm việc", office: "Văn phòng", building: "Nhà xưởng", utility: "Tiện ích", safety: "An toàn" }
 };
 
 export const wallSideLabels: Record<Language, Record<string, string>> = {

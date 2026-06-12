@@ -1,4 +1,4 @@
-export type Category = "machine" | "logistics" | "work" | "building" | "utility" | "safety";
+export type Category = "machine" | "logistics" | "work" | "office" | "building" | "utility" | "safety";
 export type ViewMode = "2d" | "3d";
 export type OrbitTargetMode = "factory" | "selected" | "walk";
 export type WallSide = "north" | "east" | "south" | "west";
@@ -67,7 +67,19 @@ export type LayoutItem = {
   floorLabel?: string;
   routeSignColor?: string;
   showFloorSigns?: boolean;
+  parentRoomId?: string;
 };
+
+export type DimensionLine = {
+  id: string;
+  axis: "x" | "y";
+  itemAId: string;
+  pointA: SnapPointKey;
+  itemBId: string;
+  pointB: SnapPointKey;
+};
+
+export type SnapPointKey = "tl" | "tc" | "tr" | "ml" | "mr" | "bl" | "bc" | "br";
 
 export type FactorySettings = {
   width: number;
@@ -85,6 +97,7 @@ export type ProjectFile = {
   annotations?: AnnotationItem[];
   annotationLayerVisible?: boolean;
   customTemplates?: CustomTemplate[];
+  dimensions?: DimensionLine[];
 };
 
-export type ProjectSnapshot = Pick<ProjectFile, "factory" | "items" | "waypoints" | "annotations" | "annotationLayerVisible" | "customTemplates">;
+export type ProjectSnapshot = Pick<ProjectFile, "factory" | "items" | "waypoints" | "annotations" | "annotationLayerVisible" | "customTemplates" | "dimensions">;
