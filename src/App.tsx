@@ -1040,6 +1040,16 @@ function App() {
       </aside>
 
       <main className={workspaceClassName} ref={workspaceRef}>
+        {isScreenshotMode ? (
+          <button
+            className="screenshot-exit-button"
+            onClick={() => setIsScreenshotMode(false)}
+            aria-label="撮影モードを解除"
+            title="撮影モードを解除"
+          >
+            <Minimize2 size={15} />
+          </button>
+        ) : null}
         {!(isScreenshotMode || (isFullscreen && viewMode === "3d" && isPresenting)) ? (
         <header className="topbar">
           {viewMode === "2d" ? (
