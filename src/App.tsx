@@ -134,9 +134,16 @@ function App() {
   );
   const renderItems = useMemo(() => {
     const depthOf = (item: LayoutItem): number => {
-      if (!item.parentRoomId) return 0;
-      const parent = items.find((i) => i.id === item.parentRoomId);
-      return parent ? depthOf(parent) + 1 : 0;
+      const visited = new Set<string>();
+      let current: LayoutItem | undefined = item;
+      let depth = 0;
+      while (current?.parentRoomId) {
+        if (visited.has(current.id)) break; // circular reference guard
+        visited.add(current.id);
+        current = items.find((i) => i.id === current!.parentRoomId);
+        depth++;
+      }
+      return depth;
     };
     return [...items]
       .map((item) => ({ item, depth: depthOf(item) }))

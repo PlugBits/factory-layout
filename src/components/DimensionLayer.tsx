@@ -61,41 +61,37 @@ export function DimensionLayer({ items, dimensions, pxPerMeter, active, onAdd, o
     if (dim.axis === "x") {
       const lineY = Math.min(ay, by) - OFFSET;
       const dist = Math.abs(pB.x - pA.x);
+      const label = dist.toFixed(2) + "m";
       const lx = (ax + bx) / 2;
+      const lw = label.length * 6 + 6;
       return (
-        <g key={dim.id} onClick={() => onDelete(dim.id)} style={{ cursor: "pointer" }} >
-          {/* hit area */}
-          <rect x={Math.min(ax, bx) - 4} y={lineY - FONT - 6} width={Math.abs(bx - ax) + 8} height={FONT + 10} fill="transparent" />
+        <g key={dim.id} onClick={() => onDelete(dim.id)} style={{ cursor: "pointer" }}>
+          <rect x={Math.min(ax, bx) - 4} y={lineY - FONT - 8} width={Math.abs(bx - ax) + 8} height={FONT + 12} fill="transparent" />
           <line x1={ax} y1={ay} x2={ax} y2={lineY} stroke="#e11d48" strokeWidth={1} strokeDasharray="3 2" />
           <line x1={bx} y1={by} x2={bx} y2={lineY} stroke="#e11d48" strokeWidth={1} strokeDasharray="3 2" />
           <line x1={ax} y1={lineY} x2={bx} y2={lineY} stroke="#e11d48" strokeWidth={1.5} />
           <polygon points={`${ax},${lineY} ${ax + ARROW},${lineY - ARROW / 2} ${ax + ARROW},${lineY + ARROW / 2}`} fill="#e11d48" />
           <polygon points={`${bx},${lineY} ${bx - ARROW},${lineY - ARROW / 2} ${bx - ARROW},${lineY + ARROW / 2}`} fill="#e11d48" />
-          <text x={lx} y={lineY - 4} textAnchor="middle" fontSize={FONT} fill="#e11d48" fontWeight="700"
-            style={{ paintOrder: "stroke", stroke: "white", strokeWidth: 3, strokeLinejoin: "round" }}
-          >{dist.toFixed(2)}m</text>
-          <text x={lx} y={lineY - 4} textAnchor="middle" fontSize={FONT} fill="#e11d48" fontWeight="700">{dist.toFixed(2)}m</text>
+          <rect x={lx - lw / 2} y={lineY - FONT - 4} width={lw} height={FONT + 2} fill="white" opacity="0.85" />
+          <text x={lx} y={lineY - 4} textAnchor="middle" fontSize={FONT} fill="#e11d48" fontWeight="700">{label}</text>
         </g>
       );
     } else {
       const lineX = Math.min(ax, bx) - OFFSET;
       const dist = Math.abs(pB.y - pA.y);
+      const label = dist.toFixed(2) + "m";
       const ly = (ay + by) / 2;
+      const lw = label.length * 6 + 6;
       return (
-        <g key={dim.id} onClick={() => onDelete(dim.id)} style={{ cursor: "pointer" }} >
-          <rect x={lineX - FONT - 6} y={Math.min(ay, by) - 4} width={FONT + 10} height={Math.abs(by - ay) + 8} fill="transparent" />
+        <g key={dim.id} onClick={() => onDelete(dim.id)} style={{ cursor: "pointer" }}>
+          <rect x={lineX - FONT - 8} y={Math.min(ay, by) - 4} width={FONT + 12} height={Math.abs(by - ay) + 8} fill="transparent" />
           <line x1={ax} y1={ay} x2={lineX} y2={ay} stroke="#e11d48" strokeWidth={1} strokeDasharray="3 2" />
           <line x1={bx} y1={by} x2={lineX} y2={by} stroke="#e11d48" strokeWidth={1} strokeDasharray="3 2" />
           <line x1={lineX} y1={ay} x2={lineX} y2={by} stroke="#e11d48" strokeWidth={1.5} />
           <polygon points={`${lineX},${ay} ${lineX - ARROW / 2},${ay + ARROW} ${lineX + ARROW / 2},${ay + ARROW}`} fill="#e11d48" />
           <polygon points={`${lineX},${by} ${lineX - ARROW / 2},${by - ARROW} ${lineX + ARROW / 2},${by - ARROW}`} fill="#e11d48" />
-          <text x={lineX - 4} y={ly} textAnchor="middle" fontSize={FONT} fill="#e11d48" fontWeight="700"
-            transform={`rotate(-90,${lineX - 4},${ly})`}
-            style={{ paintOrder: "stroke", stroke: "white", strokeWidth: 3, strokeLinejoin: "round" }}
-          >{dist.toFixed(2)}m</text>
-          <text x={lineX - 4} y={ly} textAnchor="middle" fontSize={FONT} fill="#e11d48" fontWeight="700"
-            transform={`rotate(-90,${lineX - 4},${ly})`}
-          >{dist.toFixed(2)}m</text>
+          <rect x={lineX - lw / 2} y={ly - FONT / 2 - 2} width={lw} height={FONT + 2} fill="white" opacity="0.85" transform={`rotate(-90,${lineX},${ly})`} />
+          <text x={lineX} y={ly + FONT / 2 - 1} textAnchor="middle" fontSize={FONT} fill="#e11d48" fontWeight="700" transform={`rotate(-90,${lineX},${ly})`}>{label}</text>
         </g>
       );
     }
