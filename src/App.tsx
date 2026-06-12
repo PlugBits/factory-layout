@@ -562,14 +562,30 @@ function App() {
     }
     const rect = boardRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setSelectedId(item.id);
+
+    // クリック座標をメートル単位に変換
+    const mx = (event.clientX - rect.left) / pxPerMeter;
+    const my = (event.clientY - rect.top) / pxPerMeter;
+
+    // クリック座標を含む全roomの中から最も小さい（内側の）roomを選ぶ
+    const targetItem = isRoomItem(item)
+      ? (items
+          .filter((entry) =>
+            isRoomItem(entry) &&
+            mx >= entry.x && mx <= entry.x + entry.width &&
+            my >= entry.y && my <= entry.y + entry.depth
+          )
+          .sort((a, b) => (a.width * a.depth) - (b.width * b.depth))[0] ?? item)
+      : item;
+
+    setSelectedId(targetItem.id);
     setSelectedAnnotationId(null);
     dragStartSnapshotRef.current = makeProjectSnapshot();
     event.currentTarget.setPointerCapture(event.pointerId);
     setDrag({
-      id: item.id,
-      dx: (event.clientX - rect.left) / pxPerMeter - item.x,
-      dy: (event.clientY - rect.top) / pxPerMeter - item.y
+      id: targetItem.id,
+      dx: mx - targetItem.x,
+      dy: my - targetItem.y
     });
   };
 
