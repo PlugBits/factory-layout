@@ -531,8 +531,8 @@ function labelFont(size: number, weight = "bold") {
 
 function configureLabelTexture(texture: THREE.CanvasTexture) {
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.generateMipmaps = false;
-  texture.minFilter = THREE.LinearFilter;
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
   texture.anisotropy = 16;
   texture.needsUpdate = true;
