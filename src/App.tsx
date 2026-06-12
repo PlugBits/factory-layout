@@ -613,27 +613,28 @@ function App() {
     const rawX = (event.clientX - rect.left) / pxPerMeter - drag.dx;
     const rawY = (event.clientY - rect.top) / pxPerMeter - drag.dy;
 
-    // ドラッグ対象は dragStartSnapshot から取得（現在の items は子孫が動いているため不正確）
+    // ドラッグ開始時のスナップショットから元座標を取得
     const snapshot = dragStartSnapshotRef.current;
-    const startItem = snapshot?.items.find((entry) => entry.id === drag.id);
+    const startItem = snapshot?.items.find((entry) => entry.id === drag.id)
+      ?? items.find((entry) => entry.id === drag.id);
     if (!startItem) return;
 
     const bounds = getItemPositionBounds(startItem, factory);
     const nextX = snap(clamp(rawX, bounds.minX, bounds.maxX), factory.grid);
     const nextY = snap(clamp(rawY, bounds.minY, bounds.maxY), factory.grid);
-    // 開始位置からの総移動量
     const totalDx = Number((nextX - drag.startItemX).toFixed(3));
     const totalDy = Number((nextY - drag.startItemY).toFixed(3));
 
     if (isRoomItem(startItem)) {
-      const descendants = getRoomDescendants(startItem.id, snapshot!.items);
+      // 自分の直接の子孫だけを動かす（親は動かさない）
+      const descendants = getRoomDescendants(startItem.id, snapshot?.items ?? items);
       setItems((current) => current.map((entry) => {
         if (entry.id === startItem.id) return { ...entry, x: nextX, y: nextY };
         if (descendants.has(entry.id)) {
-          const origin = snapshot!.items.find((s) => s.id === entry.id);
-          if (!origin) return entry;
+          const origin = snapshot?.items.find((s) => s.id === entry.id) ?? entry;
           return { ...entry, x: Number((origin.x + totalDx).toFixed(3)), y: Number((origin.y + totalDy).toFixed(3)) };
         }
+        // 親roomや無関係のアイテムは一切触らない
         return entry;
       }));
     } else {
@@ -647,11 +648,13 @@ function App() {
     if (droppedItem) {
       const cx = droppedItem.x + droppedItem.width / 2;
       const cy = droppedItem.y + droppedItem.depth / 2;
-      // Find the smallest room that contains the center (for proper nesting)
+      // droppedItemの子孫IDを取得（自分の子孫を親にしない）
+      const ownDescendants = getRoomDescendants(droppedItem.id, items);
       const containingRoom = items
         .filter((entry) =>
           isRoomItem(entry) &&
           entry.id !== droppedItem.id &&
+          !ownDescendants.has(entry.id) &&  // 自分の子孫は除外
           cx >= entry.x && cx <= entry.x + entry.width &&
           cy >= entry.y && cy <= entry.y + entry.depth
         )
