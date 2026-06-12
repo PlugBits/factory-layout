@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Box, Copy, Download, Eye, Grid2X2, Maximize2, Minimize2, Redo2, RotateCw, Save, Trash2, Undo2, Upload, ZoomIn, ZoomOut } from "lucide-react";
+import { Box, Camera, Copy, Download, Eye, Grid2X2, Maximize2, Minimize2, Redo2, RotateCw, Save, Trash2, Undo2, Upload, ZoomIn, ZoomOut } from "lucide-react";
 import { toPng } from "html-to-image";
 import {
   categoryLabels,
@@ -1051,9 +1051,13 @@ function App() {
             <button className={orbitTargetMode === "walk" ? "active view-button" : "view-button"} onClick={() => setOrbitTargetMode("walk")}>{text("walk")}</button>
           ) : null}
           {viewMode === "3d" ? (
-            <button className="view-button fullscreen-toggle-button" onClick={() => void toggleWorkspaceFullscreen()} aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}>
+            <button
+              className="view-button topbar-icon-button fullscreen-toggle-button"
+              onClick={() => void toggleWorkspaceFullscreen()}
+              aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+              title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            >
               {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-              {isFullscreen ? "Exit" : "Fullscreen"}
             </button>
           ) : null}
           {viewMode === "2d" ? (
@@ -1129,14 +1133,14 @@ function App() {
               </button>
             </span>
           ) : null}
-          <button className="topbar-action" onClick={undo} disabled={!undoStack.length} aria-label="Undo"><Undo2 size={16} />Undo</button>
-          <button className="topbar-action" onClick={redo} disabled={!redoStack.length} aria-label="Redo"><Redo2 size={16} />Redo</button>
-          <button className="topbar-action" onClick={rotateSelected} disabled={!selectedItem}><RotateCw size={16} />{text("rotate")}</button>
-          <button className="topbar-action" onClick={deleteSelected} disabled={!selectedItem}>{text("delete")}</button>
-          <button className="topbar-action" onClick={saveJson}><Save size={16} />{text("saveJson")}</button>
-          <button className="topbar-action" onClick={() => fileRef.current?.click()}><Upload size={16} />{text("loadJson")}</button>
-          <button className="topbar-action" onClick={exportPng} disabled={isExportingPng}><Download size={16} />PNG</button>
-          <button className="topbar-action" onClick={() => setIsScreenshotMode(true)}><Eye size={16} />撮影モード</button>
+          <button className="topbar-action topbar-icon-button" onClick={undo} disabled={!undoStack.length} aria-label="Undo" title="Undo"><Undo2 size={16} /></button>
+          <button className="topbar-action topbar-icon-button" onClick={redo} disabled={!redoStack.length} aria-label="Redo" title="Redo"><Redo2 size={16} /></button>
+          <button className="topbar-action topbar-icon-button" onClick={rotateSelected} disabled={!selectedItem} aria-label={text("rotate")} title={text("rotate")}><RotateCw size={16} /></button>
+          <button className="topbar-action topbar-icon-button" onClick={deleteSelected} disabled={!selectedItem} aria-label={text("delete")} title={text("delete")}><Trash2 size={16} /></button>
+          <button className="topbar-action topbar-icon-button" onClick={saveJson} aria-label={text("saveJson")} title={text("saveJson")}><Save size={16} /></button>
+          <button className="topbar-action topbar-icon-button" onClick={() => fileRef.current?.click()} aria-label={text("loadJson")} title={text("loadJson")}><Upload size={16} /></button>
+          <button className="topbar-action topbar-icon-button" onClick={exportPng} disabled={isExportingPng} aria-label="PNG" title="PNG"><Download size={16} /></button>
+          <button className="view-button topbar-icon-button screenshot-mode-button" onClick={() => setIsScreenshotMode(true)} aria-label="撮影モード" title="撮影モード (Escで解除)"><Camera size={16} /></button>
           <input ref={fileRef} hidden type="file" accept="application/json" onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) void loadJson(file);
