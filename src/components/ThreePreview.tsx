@@ -523,6 +523,22 @@ export function ThreePreview({ factory, items, annotations, annotationLayerVisib
 
 // ---- 3D helper functions ----
 
+const LABEL_FONT_FAMILY = '"Noto Sans JP", "Yu Gothic", Meiryo, "Hiragino Kaku Gothic ProN", Arial, sans-serif';
+
+function labelFont(size: number, weight = "bold") {
+  return `${weight} ${size}px ${LABEL_FONT_FAMILY}`;
+}
+
+function configureLabelTexture(texture: THREE.CanvasTexture) {
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.generateMipmaps = false;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.anisotropy = 16;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 function getOrbitTarget(factory: ProjectFile["factory"], items: LayoutItem[], selectedId: string | null, mode: OrbitTargetMode) {
   const selected = items.find((item) => item.id === selectedId);
   if (mode === "selected" && selected) {
@@ -1063,18 +1079,15 @@ function createFlowSignTexture(label: string, color: string) {
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
     let fontSize = 72;
-    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+    ctx.font = labelFont(fontSize);
     while (ctx.measureText(label).width > W - 110 && fontSize > 28) {
       fontSize -= 4;
-      ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+      ctx.font = labelFont(fontSize);
     }
     ctx.fillText(label, 82, H / 2);
   }
 
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
+  return configureLabelTexture(new THREE.CanvasTexture(canvas));
 }
 
 function createFlowLabelTexture(text: string, color: string) {
@@ -1095,17 +1108,14 @@ function createFlowLabelTexture(text: string, color: string) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   let fontSize = 54;
-  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  ctx.font = labelFont(fontSize);
   while (ctx.measureText(text).width > 410 && fontSize > 24) {
     fontSize -= 4;
-    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+    ctx.font = labelFont(fontSize);
   }
   ctx.fillText(text, 256, 80);
 
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  return texture;
+  return configureLabelTexture(new THREE.CanvasTexture(canvas));
 }
 
 function getFlowLabelSpriteWidth(text: string) {
@@ -1156,17 +1166,14 @@ function createRouteArrowTexture(text: string, color: string) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   let fontSize = 70;
-  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  ctx.font = labelFont(fontSize);
   while (ctx.measureText(text).width > 400 && fontSize > 28) {
     fontSize -= 4;
-    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+    ctx.font = labelFont(fontSize);
   }
   ctx.fillText(text, 240, 112);
 
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  return texture;
+  return configureLabelTexture(new THREE.CanvasTexture(canvas));
 }
 
 function getAnnotationLabelPoint3D(annotation: AnnotationItem) {
@@ -1253,15 +1260,12 @@ function createFloorTextTexture(text: string, color: string) {
   ctx.lineWidth = 8;
   ctx.stroke();
   ctx.fillStyle = color;
-  ctx.font = "bold 54px Arial, sans-serif";
+  ctx.font = labelFont(54);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(text, 256, 80);
 
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  return texture;
+  return configureLabelTexture(new THREE.CanvasTexture(canvas));
 }
 
 function getFloorLabelWidth(text: string) {
@@ -1349,17 +1353,14 @@ function createAnnotationNoteTexture(annotation: AnnotationItem) {
   ctx.textAlign = "left";
   let fontSize = 52;
   const label = annotation.label || "Note";
-  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  ctx.font = labelFont(fontSize);
   while (ctx.measureText(label).width > 300 && fontSize > 24) {
     fontSize -= 4;
-    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+    ctx.font = labelFont(fontSize);
   }
   ctx.fillText(label, 176, 160);
 
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  return texture;
+  return configureLabelTexture(new THREE.CanvasTexture(canvas));
 }
 
 function drawAnnotationNoteIcon(ctx: CanvasRenderingContext2D, icon: NonNullable<AnnotationItem["noteIcon"]>, color: string, cx: number, cy: number) {
@@ -1378,7 +1379,7 @@ function drawAnnotationNoteIcon(ctx: CanvasRenderingContext2D, icon: NonNullable
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 58px Arial, sans-serif";
+    ctx.font = labelFont(58);
     ctx.fillText("!", cx, cy + 10);
     return;
   }
@@ -1388,7 +1389,7 @@ function drawAnnotationNoteIcon(ctx: CanvasRenderingContext2D, icon: NonNullable
     ctx.arc(cx, cy, 48, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 72px Arial, sans-serif";
+    ctx.font = labelFont(72);
     ctx.fillText("i", cx, cy + 2);
     return;
   }
@@ -1396,7 +1397,7 @@ function drawAnnotationNoteIcon(ctx: CanvasRenderingContext2D, icon: NonNullable
   roundRect(ctx, cx - 50, cy - 38, 100, 76, 16);
   ctx.fill();
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 46px Arial, sans-serif";
+  ctx.font = labelFont(46);
   ctx.fillText("N", cx, cy);
 }
 
@@ -1493,13 +1494,17 @@ function addTopIcon(group: THREE.Group, item: LayoutItem, width: number, depth: 
 }
 
 function createTopIconTexture(item: LayoutItem) {
+  const scale = 2;
+  const W = 512;
+  const H = 320;
   const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 320;
+  canvas.width = W * scale;
+  canvas.height = H * scale;
   const ctx = canvas.getContext("2d");
   if (!ctx) return new THREE.CanvasTexture(canvas);
+  ctx.scale(scale, scale);
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = "rgba(255,255,255,0.94)";
   roundRect(ctx, 18, 18, 476, 284, 34);
   ctx.fill();
@@ -1511,10 +1516,10 @@ function createTopIconTexture(item: LayoutItem) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   let fontSize = 72;
-  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  ctx.font = labelFont(fontSize);
   while (ctx.measureText(item.name).width > 450 && fontSize > 28) {
     fontSize -= 4;
-    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+    ctx.font = labelFont(fontSize);
   }
   ctx.fillText(item.name, 256, 104);
 
@@ -1523,13 +1528,10 @@ function createTopIconTexture(item: LayoutItem) {
   ctx.fill();
 
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 56px Arial, sans-serif";
+  ctx.font = labelFont(56);
   ctx.fillText(item.icon.slice(0, 4), 256, 225);
 
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  return texture;
+  return configureLabelTexture(new THREE.CanvasTexture(canvas));
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
