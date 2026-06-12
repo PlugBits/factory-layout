@@ -590,7 +590,57 @@ function createWorkerModel(item: LayoutItem): THREE.Group {
   return group;
 }
 
+function createRoomModel(item: LayoutItem): THREE.Group {
+  const group = new THREE.Group();
+  const w = item.width;
+  const d = item.depth;
+  const h = Math.max(item.height, 0.1);
+  const t = 0.12; // wall thickness
+  const color = new THREE.Color(item.color);
+  const wallMat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.55 });
+  const edgeMat = new THREE.LineBasicMaterial({ color: color.clone().multiplyScalar(0.7) });
+
+  // floor tint
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(w, d),
+    new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(0, 0.01, 0);
+  floor.renderOrder = 0.05;
+  group.add(floor);
+
+  // 4 walls: north, south, east, west
+  const wallDefs: [number, number, number, number, number][] = [
+    // [px, pz, rotY, lenX, lenZ] — geometry is (length, h, t)
+    [0,        -d / 2, 0,          w, t],
+    [0,         d / 2, 0,          w, t],
+    [ w / 2,   0,      Math.PI / 2, d, t],
+    [-w / 2,   0,      Math.PI / 2, d, t],
+  ];
+  for (const [px, pz, rotY, len] of wallDefs) {
+    const geo = new THREE.BoxGeometry(len, h, t);
+    const wall = new THREE.Mesh(geo, wallMat);
+    wall.position.set(px, h / 2, pz);
+    wall.rotation.y = rotY;
+    group.add(wall);
+    const edge = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
+    edge.position.copy(wall.position);
+    edge.rotation.copy(wall.rotation);
+    group.add(edge);
+  }
+
+  // room name label
+  addTopIcon(group, item, w, d, 0);
+
+  return group;
+}
+
 function createEquipmentModel(item: LayoutItem) {
+  if (item.templateType === "room") {
+    return createRoomModel(item);
+  }
+
   if (item.templateId === "worker") {
     const group = createWorkerModel(item);
     addTopIcon(group, item, item.width, item.depth, item.height);

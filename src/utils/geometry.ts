@@ -19,11 +19,16 @@ export function easeInOut(t: number): number {
 }
 
 export function isAreaItem(item: LayoutItem) {
+  if (item.templateType === "room") return false;
   return item.templateType === "area" || item.templateType === "range" || item.height <= 0.1 || item.templateId === "crane" || item.templateId.includes("aisle") || item.templateId === "restricted" || item.templateId === "walkway";
 }
 
 export function isRangeItem(item: LayoutItem) {
   return item.templateType === "range" || item.templateId === "crane";
+}
+
+export function isRoomItem(item: LayoutItem) {
+  return item.templateType === "room";
 }
 
 export function isFlowSnapArea(item: LayoutItem) {

@@ -36,6 +36,7 @@ export const templates: EquipmentTemplate[] = [
   { id: "cone", name: "カラーコーン", category: "safety", width: 0.4, depth: 0.4, height: 0.8, color: "#f97316", icon: "注" },
   { id: "restricted", name: "立入禁止エリア", category: "safety", width: 3.0, depth: 2.0, height: 0.05, color: "#ef4444", icon: "禁" },
   { id: "fire-ext", name: "消火器", category: "safety", width: 0.4, depth: 0.4, height: 1.0, color: "#dc2626", icon: "火" },
+  { id: "room", name: "部屋", category: "building", templateType: "room", width: 6.0, depth: 4.0, height: 2.4, color: "#94a3b8", icon: "室" },
   { id: "pillar", name: "柱", category: "building", width: 0.6, depth: 0.6, height: 4.0, color: "#64748b", icon: "柱" },
   { id: "shutter", name: "シャッター", category: "building", width: 3.5, depth: 0.3, height: 3.0, color: "#7b8794", icon: "SH" },
   { id: "door", name: "扉", category: "building", width: 1.0, depth: 0.2, height: 2.1, color: "#a3a3a3", icon: "扉" },
@@ -94,10 +95,10 @@ export const defaultCustomTemplateDraft: Omit<EquipmentTemplate, "id"> = {
 };
 
 export const templateTypeLabels: Record<Language, Record<EquipmentTemplateType, string>> = {
-  ja: { box: "四角要素", area: "床エリア", range: "枠レンジ" },
-  en: { box: "Box element", area: "Floor area", range: "Range frame" },
-  zh: { box: "方块元素", area: "地面区域", range: "范围框" },
-  id: { box: "Elemen kotak", area: "Area lantai", range: "Bingkai rentang" },
-  th: { box: "กล่อง", area: "พื้นที่พื้น", range: "กรอบช่วง" },
-  vi: { box: "Khối hộp", area: "Vùng sàn", range: "Khung vùng" }
+  ja: { box: "四角要素", area: "床エリア", range: "枠レンジ", room: "部屋" },
+  en: { box: "Box element", area: "Floor area", range: "Range frame", room: "Room" },
+  zh: { box: "方块元素", area: "地面区域", range: "范围框", room: "房间" },
+  id: { box: "Elemen kotak", area: "Area lantai", range: "Bingkai rentang", room: "Ruangan" },
+  th: { box: "กล่อง", area: "พื้นที่พื้น", range: "กรอบช่วง", room: "ห้อง" },
+  vi: { box: "Khối hộp", area: "Vùng sàn", range: "Khung vùng", room: "Phòng" }
 };

@@ -20,6 +20,7 @@ export function LayoutItemView({
   onPointerDown,
   onDoubleClick
 }: LayoutItemViewProps) {
+  const isRoom = item.templateType === "room";
   const showRouteSigns = item.templateId === "forklift-aisle" && item.showFloorSigns !== false && (item.trafficDirection ?? "none") !== "none";
   const routeLabel = item.floorLabel ?? ((item.trafficDirection ?? "none") === "two-way" ? "TWO WAY" : "ONE WAY");
   const rotated = item.rotation === 90 || item.rotation === 270;
@@ -29,6 +30,27 @@ export function LayoutItemView({
   const top = item.y + item.depth / 2 - displayDepth / 2;
   const routeSignCount = Math.max(1, Math.min(5, Math.floor((rotated ? displayDepth : displayWidth) / 3.2)));
   const routeSigns = Array.from({ length: routeSignCount }, (_, index) => index);
+
+  if (isRoom) {
+    return (
+      <div
+        className={`layout-item room-item${selected ? " selected" : ""}${secondSelected ? " second-selected" : ""}`}
+        style={{
+          left: left * pxPerMeter,
+          top: top * pxPerMeter,
+          width: displayWidth * pxPerMeter,
+          height: displayDepth * pxPerMeter,
+          "--room-color": item.color,
+          zIndex: 2
+        } as CSSProperties}
+        data-rotation={item.rotation}
+        onPointerDown={onPointerDown}
+        onDoubleClick={onDoubleClick}
+      >
+        <div className="room-label">{item.name}</div>
+      </div>
+    );
+  }
 
   return (
     <div

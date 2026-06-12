@@ -29,7 +29,7 @@ import {
   languageStorageKey
 } from "./constants/factory";
 import { makeId, loadDraftProject, loadLanguage, makeFactory, downloadBlob, snapshotsEqual } from "./utils/project";
-import { snap, snapSize, clamp, isAreaItem, computeEdgeGap, getEdgePatch, autoDetectEdgePair, getItemPositionBounds } from "./utils/geometry";
+import { snap, snapSize, clamp, isAreaItem, isRoomItem, computeEdgeGap, getEdgePatch, autoDetectEdgePair, getItemPositionBounds } from "./utils/geometry";
 import { moveAnnotationBy, moveAnnotationEndpoint, snapPointToFlowArea } from "./utils/annotations";
 import { getArrowMovement, isFormField } from "./utils/keyboard";
 import type {
@@ -129,7 +129,10 @@ function App() {
     [items, language]
   );
   const renderItems = useMemo(
-    () => [...items].sort((left, right) => Number(isAreaItem(right)) - Number(isAreaItem(left))),
+    () => [...items].sort((left, right) => {
+      const layerOf = (item: typeof left) => isRoomItem(item) ? 0 : isAreaItem(item) ? 1 : 2;
+      return layerOf(left) - layerOf(right);
+    }),
     [items]
   );
 
