@@ -73,6 +73,8 @@ function App() {
   const [dimensions, setDimensions] = useState<DimensionLine[]>(() => draftProject?.dimensions ?? []);
   const [dimensionTool, setDimensionTool] = useState(false);
   const [dimensionVisible, setDimensionVisible] = useState(true);
+  const [dimMenuOpen, setDimMenuOpen] = useState(false);
+  const dimMenuRef = useRef<HTMLDivElement | null>(null);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [annotationDrag, setAnnotationDrag] = useState<{ id: string; mode: "move" | "start" | "end"; startX: number; startY: number; original: AnnotationItem } | null>(null);
   const [undoStack, setUndoStack] = useState<ProjectSnapshot[]>([]);
@@ -1043,27 +1045,40 @@ function App() {
               {text("clearRoute")} ({waypoints.length})
             </button>
           ) : null}
-          {viewMode === "2d" ? (
+          <div className="dim-menu-wrap" ref={dimMenuRef}>
             <button
-              className={dimensionTool ? "active view-button" : "view-button"}
-              onClick={() => {
-                setDimensionTool((v) => !v);
-                setAnnotationTool(null);
-                setWaypointMode(false);
-              }}
-              title="寸法線モード（要素の点をクリックして距離を測定）"
+              className={(dimensionTool || dimMenuOpen) ? "active view-button" : "view-button"}
+              onClick={() => setDimMenuOpen((v) => !v)}
             >
-              📐 寸法線
+              📐 寸法線 ▾
             </button>
-          ) : null}
-          {dimensions.length > 0 ? (
-            <button
-              className={dimensionVisible ? "view-button" : "active view-button"}
-              onClick={() => setDimensionVisible((v) => !v)}
-            >
-              {dimensionVisible ? "📐 寸法線 非表示" : "📐 寸法線 表示"}
-            </button>
-          ) : null}
+            {dimMenuOpen && (
+              <div className="dim-menu" onMouseLeave={() => setDimMenuOpen(false)}>
+                {viewMode === "2d" && (
+                  <button onClick={() => {
+                    setDimensionTool((v) => !v);
+                    setAnnotationTool(null);
+                    setWaypointMode(false);
+                    setDimMenuOpen(false);
+                  }}>
+                    {dimensionTool ? "✓ 描画中（クリックで終了）" : "描画モード"}
+                  </button>
+                )}
+                <button onClick={() => { setDimensionVisible((v) => !v); setDimMenuOpen(false); }}>
+                  {dimensionVisible ? "非表示にする" : "表示する"}
+                </button>
+                {dimensions.length > 0 && (
+                  <button onClick={() => {
+                    recordHistory();
+                    setDimensions([]);
+                    setDimMenuOpen(false);
+                  }}>
+                    全て削除 ({dimensions.length})
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           {viewMode === "3d" ? (
             <span className="present-speed-controls">
               <label className="speed-label">

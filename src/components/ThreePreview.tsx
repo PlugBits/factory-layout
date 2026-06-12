@@ -28,6 +28,7 @@ export function ThreePreview({ factory, items, annotations, annotationLayerVisib
   const mountRef = useRef<HTMLDivElement | null>(null);
   const onPresentDoneRef = useRef<(() => void) | undefined>(undefined);
   onPresentDoneRef.current = onPresentDone;
+  const dimGroupRef = useRef<THREE.Group | null>(null);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -156,6 +157,7 @@ export function ThreePreview({ factory, items, annotations, annotationLayerVisib
 
     // 寸法線の3D描画
     const dimGroup = new THREE.Group();
+    dimGroupRef.current = dimGroup;
     scene.add(dimGroup);
     const buildDimensions = () => {
       dimGroup.clear();
@@ -499,8 +501,15 @@ export function ThreePreview({ factory, items, annotations, annotationLayerVisib
       renderer.domElement.removeEventListener("pointercancel", pointerUp);
       renderer.dispose();
       mount.innerHTML = "";
+      dimGroupRef.current = null;
     };
   }, [factory, items, annotations, annotationLayerVisible, selectedId, orbitTargetMode]);
+
+  useEffect(() => {
+    if (dimGroupRef.current) {
+      dimGroupRef.current.visible = dimensionVisible;
+    }
+  }, [dimensionVisible]);
 
   return (
     <div className="three-preview-wrap">
