@@ -84,6 +84,7 @@ function App() {
   const [sizeEditId, setSizeEditId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [isExportingPng, setIsExportingPng] = useState(false);
+  const [isScreenshotMode, setIsScreenshotMode] = useState(false);
   const [drag, setDrag] = useState<{ id: string; dx: number; dy: number; startItemX: number; startItemY: number } | null>(null);
   const [panDrag, setPanDrag] = useState<{ x: number; y: number } | null>(null);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
@@ -445,6 +446,19 @@ function App() {
     window.addEventListener("keydown", keyDown);
     return () => window.removeEventListener("keydown", keyDown);
   }, [redoStack, undoStack, factory, items, waypoints, annotations, annotationLayerVisible]);
+
+  useEffect(() => {
+    if (!isScreenshotMode) return;
+    const keyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsScreenshotMode(false);
+      }
+    };
+
+    window.addEventListener("keydown", keyDown);
+    return () => window.removeEventListener("keydown", keyDown);
+  }, [isScreenshotMode]);
 
   useEffect(() => {
     setSecondSelectedId(null);
@@ -866,8 +880,15 @@ function App() {
     moreColor: text("moreColor")
   };
 
+  const workspaceClassName = [
+    "workspace",
+    isFullscreen && viewMode === "3d" ? "fullscreen-3d" : "",
+    isPresenting ? "presenting" : "",
+    isScreenshotMode ? "screenshot-mode" : ""
+  ].filter(Boolean).join(" ");
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell${isScreenshotMode ? " screenshot-mode" : ""}`}>
       <aside className="sidebar">
         <div className="brand">Factory Layout</div>
         <label className="language-select">
@@ -1010,8 +1031,8 @@ function App() {
         )}
       </aside>
 
-      <main className={`${isFullscreen && viewMode === "3d" ? "workspace fullscreen-3d" : "workspace"}${isPresenting ? " presenting" : ""}`} ref={workspaceRef}>
-        {!(isFullscreen && viewMode === "3d" && isPresenting) ? (
+      <main className={workspaceClassName} ref={workspaceRef}>
+        {!(isScreenshotMode || (isFullscreen && viewMode === "3d" && isPresenting)) ? (
         <header className="topbar">
           {viewMode === "2d" ? (
             <div className="zoom-controls">
@@ -1115,6 +1136,7 @@ function App() {
           <button className="topbar-action" onClick={saveJson}><Save size={16} />{text("saveJson")}</button>
           <button className="topbar-action" onClick={() => fileRef.current?.click()}><Upload size={16} />{text("loadJson")}</button>
           <button className="topbar-action" onClick={exportPng} disabled={isExportingPng}><Download size={16} />PNG</button>
+          <button className="topbar-action" onClick={() => setIsScreenshotMode(true)}><Eye size={16} />撮影モード</button>
           <input ref={fileRef} hidden type="file" accept="application/json" onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) void loadJson(file);

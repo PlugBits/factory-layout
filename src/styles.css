@@ -44,6 +44,18 @@ button:disabled {
   height: 100%;
 }
 
+.app-shell.screenshot-mode {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-shell.screenshot-mode .sidebar,
+.app-shell.screenshot-mode .topbar,
+.app-shell.screenshot-mode .properties,
+.app-shell.screenshot-mode .fullscreen-exit-button,
+.app-shell.screenshot-mode .walk-help {
+  display: none !important;
+}
+
 .sidebar,
 .properties {
   overflow: auto;
@@ -528,6 +540,10 @@ textarea {
   min-height: 0;
 }
 
+.workspace.screenshot-mode {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .workspace:fullscreen {
   width: 100vw;
   height: 100vh;
@@ -642,6 +658,7 @@ textarea {
   min-height: 0;
 }
 
+.workspace.screenshot-mode .content,
 .workspace.fullscreen-3d .content {
   grid-template-columns: minmax(0, 1fr);
 }

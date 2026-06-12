@@ -1494,15 +1494,13 @@ function addTopIcon(group: THREE.Group, item: LayoutItem, width: number, depth: 
 }
 
 function createTopIconTexture(item: LayoutItem) {
-  const scale = 2;
   const W = 512;
   const H = 320;
   const canvas = document.createElement("canvas");
-  canvas.width = W * scale;
-  canvas.height = H * scale;
+  canvas.width = W;
+  canvas.height = H;
   const ctx = canvas.getContext("2d");
   if (!ctx) return new THREE.CanvasTexture(canvas);
-  ctx.scale(scale, scale);
 
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = "rgba(255,255,255,0.94)";
