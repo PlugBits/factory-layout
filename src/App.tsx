@@ -553,6 +553,22 @@ function App() {
     });
   };
 
+  // Collect all descendant item IDs of a room (children, grandchildren, …)
+  const getRoomDescendants = (roomId: string, allItems: LayoutItem[]): Set<string> => {
+    const result = new Set<string>();
+    const queue = [roomId];
+    while (queue.length) {
+      const id = queue.shift()!;
+      allItems.forEach((entry) => {
+        if (entry.parentRoomId === id && !result.has(entry.id)) {
+          result.add(entry.id);
+          if (isRoomItem(entry)) queue.push(entry.id);
+        }
+      });
+    }
+    return result;
+  };
+
   const moveDrag = (event: React.PointerEvent) => {
     if (!drag || !boardRef.current) return;
     const rect = boardRef.current.getBoundingClientRect();
@@ -567,9 +583,10 @@ function App() {
     const dy = nextY - item.y;
     if (dx === 0 && dy === 0) return;
     if (isRoomItem(item)) {
+      const descendants = getRoomDescendants(item.id, items);
       setItems((current) => current.map((entry) => {
         if (entry.id === item.id) return { ...entry, x: nextX, y: nextY };
-        if (entry.parentRoomId === item.id) return { ...entry, x: Number((entry.x + dx).toFixed(3)), y: Number((entry.y + dy).toFixed(3)) };
+        if (descendants.has(entry.id)) return { ...entry, x: Number((entry.x + dx).toFixed(3)), y: Number((entry.y + dy).toFixed(3)) };
         return entry;
       }));
     } else {
@@ -580,14 +597,18 @@ function App() {
   const endDrag = (event: React.PointerEvent) => {
     if (drag) event.currentTarget.releasePointerCapture(event.pointerId);
     const droppedItem = drag ? items.find((entry) => entry.id === drag.id) : null;
-    if (droppedItem && !isRoomItem(droppedItem)) {
+    if (droppedItem) {
       const cx = droppedItem.x + droppedItem.width / 2;
       const cy = droppedItem.y + droppedItem.depth / 2;
-      const containingRoom = items.find(
-        (entry) => isRoomItem(entry) && entry.id !== droppedItem.id &&
+      // Find the smallest room that contains the center (for proper nesting)
+      const containingRoom = items
+        .filter((entry) =>
+          isRoomItem(entry) &&
+          entry.id !== droppedItem.id &&
           cx >= entry.x && cx <= entry.x + entry.width &&
           cy >= entry.y && cy <= entry.y + entry.depth
-      );
+        )
+        .sort((a, b) => (a.width * a.depth) - (b.width * b.depth))[0];
       const newParentRoomId = containingRoom?.id ?? undefined;
       if (newParentRoomId !== droppedItem.parentRoomId) {
         setItems((current) => current.map((entry) =>
