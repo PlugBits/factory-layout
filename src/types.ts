@@ -69,6 +69,7 @@ export type LayoutItem = {
   showFloorSigns?: boolean;
   show3dLabel?: boolean;
   visible?: boolean;
+  groupId?: string;
   parentRoomId?: string;
 };
 

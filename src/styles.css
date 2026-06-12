@@ -1217,6 +1217,25 @@ textarea {
   margin-bottom: 0;
 }
 
+.group-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #d7dee9;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 6px 8px;
+  margin-bottom: 10px;
+  color: #475569;
+  font-size: 12px;
+}
+
+.group-actions button {
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
 .placed-actions {
   display: inline-flex;
   gap: 3px;

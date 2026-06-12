@@ -116,6 +116,9 @@ function App() {
   const pxPerMeter = basePxPerMeter * zoom;
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
   const secondItem = items.find((item) => item.id === secondSelectedId) ?? null;
+  const selectedGroupId = selectedItem?.groupId ?? null;
+  const selectedGroupItems = selectedGroupId ? items.filter((item) => item.groupId === selectedGroupId) : [];
+  const selectedGroupItemIds = new Set(selectedGroupItems.map((item) => item.id));
   const sizeEditItem = items.find((item) => item.id === sizeEditId) ?? null;
   const allTemplates = useMemo<EquipmentTemplate[]>(() => [...templates, ...customTemplates], [customTemplates]);
   const selectedTemplate = allTemplates.find((template) => template.id === selectedTemplateId) ?? allTemplates[0] ?? templates[0];
@@ -138,6 +141,8 @@ function App() {
     () => visibleLayoutItems.map((item) => ({ ...item, name: getItemDisplayName(language, item.templateId, item.name) })),
     [visibleLayoutItems, language]
   );
+  const getGroupItems = (item: LayoutItem, allItems = items) =>
+    item.groupId ? allItems.filter((entry) => entry.groupId === item.groupId) : [item];
   const renderItems = useMemo(() => {
     const depthOf = (item: LayoutItem): number => {
       const visited = new Set<string>();
@@ -513,15 +518,21 @@ function App() {
   const deleteSelected = () => {
     if (!selectedId) return;
     recordHistory();
-    setItems((current) => current.filter((item) => item.id !== selectedId));
+    const selected = items.find((item) => item.id === selectedId);
+    const deleteIds = new Set(selected ? getGroupItems(selected).map((item) => item.id) : [selectedId]);
+    setItems((current) => current.filter((item) => !deleteIds.has(item.id)));
     setSelectedId(null);
+    setSecondSelectedId(null);
   };
 
   const deleteItem = (id: string) => {
+    const source = items.find((item) => item.id === id);
+    const deleteIds = new Set(source ? getGroupItems(source).map((item) => item.id) : [id]);
     recordHistory();
-    setItems((current) => current.filter((item) => item.id !== id));
-    if (selectedId === id) setSelectedId(null);
-    if (sizeEditId === id) setSizeEditId(null);
+    setItems((current) => current.filter((item) => !deleteIds.has(item.id)));
+    if (selectedId && deleteIds.has(selectedId)) setSelectedId(null);
+    if (secondSelectedId && deleteIds.has(secondSelectedId)) setSecondSelectedId(null);
+    if (sizeEditId && deleteIds.has(sizeEditId)) setSizeEditId(null);
   };
 
   const toggleItemVisibility = (id: string) => {
@@ -530,22 +541,48 @@ function App() {
   };
 
   const duplicateItem = (source: LayoutItem) => {
-    const id = makeId("item");
-    const copy = {
-      ...source,
-      id,
-      x: snap(clamp(source.x + (factory.grid || 1), 0, Math.max(0, factory.width - source.width)), factory.grid),
-      y: snap(clamp(source.y + (factory.grid || 1), 0, Math.max(0, factory.depth - source.depth)), factory.grid)
-    };
+    const sources = getGroupItems(source);
+    const newGroupId = source.groupId ? makeId("group") : undefined;
+    const idMap = new Map(sources.map((item) => [item.id, makeId("item")]));
+    const copies = sources.map((item) => ({
+      ...item,
+      id: idMap.get(item.id)!,
+      groupId: newGroupId,
+      parentRoomId: item.parentRoomId && idMap.has(item.parentRoomId) ? idMap.get(item.parentRoomId) : item.parentRoomId,
+      x: snap(clamp(item.x + (factory.grid || 1), 0, Math.max(0, factory.width - item.width)), factory.grid),
+      y: snap(clamp(item.y + (factory.grid || 1), 0, Math.max(0, factory.depth - item.depth)), factory.grid)
+    }));
     recordHistory();
-    setItems((current) => [...current, copy]);
-    setSelectedId(id);
+    setItems((current) => [...current, ...copies]);
+    setSelectedId(copies[0]?.id ?? null);
+    setSecondSelectedId(null);
   };
 
   const rotateSelected = () => {
     if (!selectedItem) return;
     const next = ((selectedItem.rotation + 90) % 360) as LayoutItem["rotation"];
     updateItem(selectedItem.id, { rotation: next });
+  };
+
+  const groupSelectedItems = () => {
+    if (!selectedItem || !secondItem) return;
+    const targetGroupId = selectedItem.groupId ?? secondItem.groupId ?? makeId("group");
+    const sourceGroupIds = new Set([selectedItem.groupId, secondItem.groupId].filter(Boolean));
+    const targetIds = new Set([selectedItem.id, secondItem.id]);
+    recordHistory();
+    setItems((current) => current.map((item) =>
+      targetIds.has(item.id) || (item.groupId && sourceGroupIds.has(item.groupId))
+        ? { ...item, groupId: targetGroupId }
+        : item
+    ));
+    setSecondSelectedId(null);
+  };
+
+  const ungroupSelectedGroup = () => {
+    if (!selectedGroupId) return;
+    recordHistory();
+    setItems((current) => current.map((item) => item.groupId === selectedGroupId ? { ...item, groupId: undefined } : item));
+    setSecondSelectedId(null);
   };
 
   const changeZoom = (delta: number) => {
@@ -651,7 +688,21 @@ function App() {
     const totalDx = Number((nextX - drag.startItemX).toFixed(3));
     const totalDy = Number((nextY - drag.startItemY).toFixed(3));
 
-    if (isRoomItem(startItem)) {
+    if (startItem.groupId) {
+      const snapshotItems = snapshot?.items ?? items;
+      const groupItems = snapshotItems.filter((entry) => entry.groupId === startItem.groupId);
+      const minX = Math.min(...groupItems.map((entry) => entry.x));
+      const minY = Math.min(...groupItems.map((entry) => entry.y));
+      const maxX = Math.max(...groupItems.map((entry) => entry.x + entry.width));
+      const maxY = Math.max(...groupItems.map((entry) => entry.y + entry.depth));
+      const groupDx = snap(clamp(totalDx, -minX, factory.width - maxX), factory.grid);
+      const groupDy = snap(clamp(totalDy, -minY, factory.depth - maxY), factory.grid);
+      setItems((current) => current.map((entry) => {
+        if (entry.groupId !== startItem.groupId) return entry;
+        const origin = snapshotItems.find((s) => s.id === entry.id) ?? entry;
+        return { ...entry, x: Number((origin.x + groupDx).toFixed(3)), y: Number((origin.y + groupDy).toFixed(3)) };
+      }));
+    } else if (isRoomItem(startItem)) {
       // 自分の直接の子孫だけを動かす（親は動かさない）
       const descendants = getRoomDescendants(startItem.id, snapshot?.items ?? items);
       setItems((current) => current.map((entry) => {
@@ -671,7 +722,7 @@ function App() {
   const endDrag = (event: React.PointerEvent) => {
     if (drag) event.currentTarget.releasePointerCapture(event.pointerId);
     const droppedItem = drag ? items.find((entry) => entry.id === drag.id) : null;
-    if (droppedItem) {
+    if (droppedItem && !droppedItem.groupId) {
       const cx = droppedItem.x + droppedItem.width / 2;
       const cy = droppedItem.y + droppedItem.depth / 2;
       // droppedItemの子孫IDを取得（自分の子孫を親にしない）
@@ -1282,7 +1333,7 @@ function App() {
                   <LayoutItemView
                     key={item.id}
                     item={item}
-                    selected={item.id === selectedId}
+                    selected={item.id === selectedId || selectedGroupItemIds.has(item.id)}
                     secondSelected={item.id === secondSelectedId}
                     area={isAreaItem(item)}
                     pxPerMeter={pxPerMeter}
@@ -1498,10 +1549,17 @@ function App() {
                         applyTwoPointGap(gap, edgePair);
                       }} />
                   </label>
+                  <button className="secondary-button" onClick={groupSelectedItems}>グループ化</button>
                 </>
               ) : sidebarMode === "equipment" && selectedItem ? (
                 <>
                   <div className="panel-title">{text("selected")}</div>
+                  {selectedGroupId ? (
+                    <div className="group-actions">
+                      <span>{selectedGroupItems.length} items grouped</span>
+                      <button className="secondary-button" onClick={ungroupSelectedGroup}>グループ解除</button>
+                    </div>
+                  ) : null}
                   <label>{text("name")}<input value={selectedDisplayName} onChange={(event) => updateItem(selectedItem.id, { name: event.target.value })} /></label>
                   <label>{text("icon")}<input value={selectedItem.icon} maxLength={6} onChange={(event) => updateItem(selectedItem.id, { icon: event.target.value })} /></label>
                   <div className="property-grid">
