@@ -80,7 +80,7 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sizeEditId, setSizeEditId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
-  const [drag, setDrag] = useState<{ id: string; dx: number; dy: number } | null>(null);
+  const [drag, setDrag] = useState<{ id: string; dx: number; dy: number; startItemX: number; startItemY: number } | null>(null);
   const [panDrag, setPanDrag] = useState<{ x: number; y: number } | null>(null);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
@@ -585,7 +585,9 @@ function App() {
     setDrag({
       id: targetItem.id,
       dx: mx - targetItem.x,
-      dy: my - targetItem.y
+      dy: my - targetItem.y,
+      startItemX: targetItem.x,
+      startItemY: targetItem.y
     });
   };
 
@@ -608,25 +610,34 @@ function App() {
   const moveDrag = (event: React.PointerEvent) => {
     if (!drag || !boardRef.current) return;
     const rect = boardRef.current.getBoundingClientRect();
-    const item = items.find((entry) => entry.id === drag.id);
-    if (!item) return;
     const rawX = (event.clientX - rect.left) / pxPerMeter - drag.dx;
     const rawY = (event.clientY - rect.top) / pxPerMeter - drag.dy;
-    const bounds = getItemPositionBounds(item, factory);
+
+    // ドラッグ対象は dragStartSnapshot から取得（現在の items は子孫が動いているため不正確）
+    const snapshot = dragStartSnapshotRef.current;
+    const startItem = snapshot?.items.find((entry) => entry.id === drag.id);
+    if (!startItem) return;
+
+    const bounds = getItemPositionBounds(startItem, factory);
     const nextX = snap(clamp(rawX, bounds.minX, bounds.maxX), factory.grid);
     const nextY = snap(clamp(rawY, bounds.minY, bounds.maxY), factory.grid);
-    const dx = nextX - item.x;
-    const dy = nextY - item.y;
-    if (dx === 0 && dy === 0) return;
-    if (isRoomItem(item)) {
-      const descendants = getRoomDescendants(item.id, items);
+    // 開始位置からの総移動量
+    const totalDx = Number((nextX - drag.startItemX).toFixed(3));
+    const totalDy = Number((nextY - drag.startItemY).toFixed(3));
+
+    if (isRoomItem(startItem)) {
+      const descendants = getRoomDescendants(startItem.id, snapshot!.items);
       setItems((current) => current.map((entry) => {
-        if (entry.id === item.id) return { ...entry, x: nextX, y: nextY };
-        if (descendants.has(entry.id)) return { ...entry, x: Number((entry.x + dx).toFixed(3)), y: Number((entry.y + dy).toFixed(3)) };
+        if (entry.id === startItem.id) return { ...entry, x: nextX, y: nextY };
+        if (descendants.has(entry.id)) {
+          const origin = snapshot!.items.find((s) => s.id === entry.id);
+          if (!origin) return entry;
+          return { ...entry, x: Number((origin.x + totalDx).toFixed(3)), y: Number((origin.y + totalDy).toFixed(3)) };
+        }
         return entry;
       }));
     } else {
-      moveItemTo(item, rawX, rawY, false);
+      moveItemTo(startItem, rawX, rawY, false);
     }
   };
 
