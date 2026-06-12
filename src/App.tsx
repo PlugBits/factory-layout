@@ -453,12 +453,14 @@ function App() {
     const keyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
         setIsScreenshotMode(false);
       }
     };
 
-    window.addEventListener("keydown", keyDown);
-    return () => window.removeEventListener("keydown", keyDown);
+    window.addEventListener("keydown", keyDown, { capture: true });
+    return () => window.removeEventListener("keydown", keyDown, { capture: true });
   }, [isScreenshotMode]);
 
   useEffect(() => {

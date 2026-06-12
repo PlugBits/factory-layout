@@ -599,11 +599,20 @@ textarea {
 
 .topbar {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
   border-bottom: 1px solid #cad3df;
   background: #fff;
   padding: 8px 12px;
+}
+
+.topbar > button,
+.topbar > .dim-menu-wrap > button,
+.present-speed-controls > button {
+  height: 36px;
+  min-height: 36px;
+  white-space: nowrap;
 }
 
 .topbar .topbar-icon-button {
