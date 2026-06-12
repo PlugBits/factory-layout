@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Box, Camera, Copy, Download, Eye, Grid2X2, Maximize2, Minimize2, Redo2, RotateCw, Save, Trash2, Undo2, Upload, ZoomIn, ZoomOut } from "lucide-react";
+import { Box, Camera, Copy, Download, Eye, EyeOff, Grid2X2, Maximize2, Minimize2, Redo2, RotateCw, Save, Trash2, Undo2, Upload, ZoomIn, ZoomOut } from "lucide-react";
 import { toPng } from "html-to-image";
 import {
   categoryLabels,
@@ -133,9 +133,10 @@ function App() {
   const displayItemName = (item: LayoutItem) => getItemDisplayName(language, item.templateId, item.name);
   const selectedDisplayName = selectedItem ? displayItemName(selectedItem) : "";
   const secondDisplayName = secondItem ? displayItemName(secondItem) : "";
+  const visibleLayoutItems = useMemo(() => items.filter((item) => item.visible !== false), [items]);
   const localizedItems = useMemo(
-    () => items.map((item) => ({ ...item, name: getItemDisplayName(language, item.templateId, item.name) })),
-    [items, language]
+    () => visibleLayoutItems.map((item) => ({ ...item, name: getItemDisplayName(language, item.templateId, item.name) })),
+    [visibleLayoutItems, language]
   );
   const renderItems = useMemo(() => {
     const depthOf = (item: LayoutItem): number => {
@@ -150,7 +151,7 @@ function App() {
       }
       return depth;
     };
-    return [...items]
+    return [...visibleLayoutItems]
       .map((item) => ({ item, depth: depthOf(item) }))
       .sort((a, b) => {
         const layerOf = (item: LayoutItem, depth: number) =>
@@ -162,7 +163,7 @@ function App() {
         zIndex: isRoomItem(item) ? 2 + depth : isAreaItem(item) ? 1 : 5
       }));
   },
-    [items]
+    [items, visibleLayoutItems]
   );
 
   const makeProjectSnapshot = (): ProjectSnapshot => ({
@@ -519,6 +520,11 @@ function App() {
     setItems((current) => current.filter((item) => item.id !== id));
     if (selectedId === id) setSelectedId(null);
     if (sizeEditId === id) setSizeEditId(null);
+  };
+
+  const toggleItemVisibility = (id: string) => {
+    recordHistory();
+    setItems((current) => current.map((item) => item.id === id ? { ...item, visible: item.visible === false } : item));
   };
 
   const duplicateItem = (source: LayoutItem) => {
@@ -1274,7 +1280,7 @@ function App() {
                   />
                 ))}
                 <DimensionLayer
-                  items={items}
+                  items={visibleLayoutItems}
                   dimensions={dimensions}
                   pxPerMeter={pxPerMeter}
                   active={dimensionTool}
@@ -1322,7 +1328,7 @@ function App() {
                         key={item.id}
                         data-item-id={item.id}
                         data-item-number={index + 1}
-                        className={`placed-item${item.id === selectedId ? " selected" : ""}${item.id === secondSelectedId ? " second-selected" : ""}`}
+                        className={`placed-item${item.id === selectedId ? " selected" : ""}${item.id === secondSelectedId ? " second-selected" : ""}${item.visible === false ? " hidden-item" : ""}`}
                         onClick={(event) => {
                           if (event.ctrlKey || event.metaKey) {
                             if (item.id !== selectedId) setSecondSelectedId((prev) => prev === item.id ? null : item.id);
@@ -1338,6 +1344,9 @@ function App() {
                           <small>X {item.x} / Y {item.y}</small>
                         </span>
                         <span className="placed-actions">
+                          <button onClick={(event) => { event.stopPropagation(); toggleItemVisibility(item.id); }} aria-label={item.visible === false ? text("visible") : "Hide"} title={item.visible === false ? text("visible") : "Hide"}>
+                            {item.visible === false ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
                           <button onClick={(event) => { event.stopPropagation(); duplicateItem(item); }} aria-label={text("duplicate")}><Copy size={14} /></button>
                           <button onClick={(event) => { event.stopPropagation(); deleteItem(item.id); }} aria-label={text("delete")}><Trash2 size={14} /></button>
                         </span>

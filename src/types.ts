@@ -68,6 +68,7 @@ export type LayoutItem = {
   routeSignColor?: string;
   showFloorSigns?: boolean;
   show3dLabel?: boolean;
+  visible?: boolean;
   parentRoomId?: string;
 };
 
