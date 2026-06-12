@@ -1339,6 +1339,10 @@ textarea {
   font-family: monospace;
 }
 
+.layout-board.exporting-png .grid-coord-label {
+  display: none;
+}
+
 .annotation-layer {
   position: absolute;
   inset: 0;

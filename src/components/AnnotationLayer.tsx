@@ -119,6 +119,7 @@ export function AnnotationLayer({
               <path
                 className="annotation-arrow-shaft"
                 d={getArrowPath(annotation, pxPerMeter, 30)}
+                fill="none"
                 stroke={annotation.color}
                 strokeWidth={strokeWidth}
                 strokeDasharray={style === "dashed" ? `${strokeWidth * 1.8} ${strokeWidth * 1.15}` : undefined}

@@ -83,6 +83,7 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sizeEditId, setSizeEditId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [isExportingPng, setIsExportingPng] = useState(false);
   const [drag, setDrag] = useState<{ id: string; dx: number; dy: number; startItemX: number; startItemY: number } | null>(null);
   const [panDrag, setPanDrag] = useState<{ x: number; y: number } | null>(null);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
@@ -740,9 +741,15 @@ function App() {
 
   const exportPng = async () => {
     if (!boardRef.current) return;
-    const dataUrl = await toPng(boardRef.current, { backgroundColor: "#ffffff", pixelRatio: 2 });
-    const response = await fetch(dataUrl);
-    downloadBlob(await response.blob(), "factory-layout.png");
+    setIsExportingPng(true);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    try {
+      const dataUrl = await toPng(boardRef.current, { backgroundColor: "#ffffff", pixelRatio: 2 });
+      const response = await fetch(dataUrl);
+      downloadBlob(await response.blob(), "factory-layout.png");
+    } finally {
+      setIsExportingPng(false);
+    }
   };
 
   const addCustomTemplate = () => {
@@ -1107,7 +1114,7 @@ function App() {
           <button className="topbar-action" onClick={deleteSelected} disabled={!selectedItem}>{text("delete")}</button>
           <button className="topbar-action" onClick={saveJson}><Save size={16} />{text("saveJson")}</button>
           <button className="topbar-action" onClick={() => fileRef.current?.click()}><Upload size={16} />{text("loadJson")}</button>
-          <button className="topbar-action" onClick={exportPng}><Download size={16} />PNG</button>
+          <button className="topbar-action" onClick={exportPng} disabled={isExportingPng}><Download size={16} />PNG</button>
           <input ref={fileRef} hidden type="file" accept="application/json" onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) void loadJson(file);
@@ -1134,11 +1141,11 @@ function App() {
             >
               <div
                 ref={boardRef}
-                className="layout-board"
+                className={`layout-board${isExportingPng ? " exporting-png" : ""}`}
                 style={{
                   width: factory.width * pxPerMeter,
                   height: factory.depth * pxPerMeter,
-                  backgroundImage: `
+                  backgroundImage: isExportingPng ? "none" : `
                     linear-gradient(#94a3b8 1.5px, transparent 1.5px),
                     linear-gradient(90deg, #94a3b8 1.5px, transparent 1.5px),
                     linear-gradient(#dbe3ee 1px, transparent 1px),
