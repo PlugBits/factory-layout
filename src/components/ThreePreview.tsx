@@ -2,17 +2,19 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
-import type { AnnotationItem, ArrowStyle, LayoutItem, OrbitTargetMode, ProjectFile, Waypoint } from "../types";
-import { isAreaItem, isRangeItem, easeInOut } from "../utils/geometry";
+import type { AnnotationItem, ArrowStyle, DimensionLine, LayoutItem, OrbitTargetMode, ProjectFile, Waypoint } from "../types";
+import { isAreaItem, isRangeItem, easeInOut, getSnapPoints } from "../utils/geometry";
 import { defaultWalls } from "../constants/factory";
 import { isWalkKey, isFormField } from "../utils/keyboard";
 import type { WallSide } from "../types";
 
-export function ThreePreview({ factory, items, annotations, annotationLayerVisible, selectedId, orbitTargetMode, presentSignalRef, onPresentDone, onPresentStateChange, waypointsRef, presentMoveSecRef, presentRotateSecRef, walkHelp }: {
+export function ThreePreview({ factory, items, annotations, annotationLayerVisible, dimensions, dimensionVisible, selectedId, orbitTargetMode, presentSignalRef, onPresentDone, onPresentStateChange, waypointsRef, presentMoveSecRef, presentRotateSecRef, walkHelp }: {
   factory: ProjectFile["factory"];
   items: LayoutItem[];
   annotations: AnnotationItem[];
   annotationLayerVisible: boolean;
+  dimensions: DimensionLine[];
+  dimensionVisible: boolean;
   selectedId: string | null;
   orbitTargetMode: OrbitTargetMode;
   presentSignalRef?: React.MutableRefObject<(() => void) | null>;
@@ -151,6 +153,63 @@ export function ThreePreview({ factory, items, annotations, annotationLayerVisib
     };
     makeDimLabel(`${factory.width}m`, factory.width / 2, 0.1, factory.depth + 0.9);
     makeDimLabel(`${factory.depth}m`, -0.9, 0.1, factory.depth / 2);
+
+    // 寸法線の3D描画
+    const dimGroup = new THREE.Group();
+    scene.add(dimGroup);
+    const buildDimensions = () => {
+      dimGroup.clear();
+      if (!dimensionVisible) return;
+      const itemMap = new Map(items.map((i) => [i.id, i]));
+      const lineMat = new THREE.LineBasicMaterial({ color: 0xe11d48 });
+      const Y = 0.08; // 床面から少し浮かせる
+      dimensions.forEach((dim) => {
+        const itemA = itemMap.get(dim.itemAId);
+        const itemB = itemMap.get(dim.itemBId);
+        if (!itemA || !itemB) return;
+        const pA = getSnapPoints(itemA)[dim.pointA];
+        const pB = getSnapPoints(itemB)[dim.pointB];
+        // Three.jsはX=右、Z=奥なので 2D(x,y) → 3D(x, Y, z)
+        const ax = pA.x, az = pA.y;
+        const bx = pB.x, bz = pB.y;
+        const OFFSET = 0.4;
+        const dist = dim.axis === "x" ? Math.abs(bx - ax) : Math.abs(bz - az);
+        const label = dist.toFixed(2) + "m";
+        if (dim.axis === "x") {
+          const lineZ = Math.min(az, bz) - OFFSET;
+          const pts = [
+            new THREE.Vector3(ax, Y, az), new THREE.Vector3(ax, Y, lineZ),
+            new THREE.Vector3(ax, Y, lineZ), new THREE.Vector3(bx, Y, lineZ),
+            new THREE.Vector3(bx, Y, lineZ), new THREE.Vector3(bx, Y, bz)
+          ];
+          const geo = new THREE.BufferGeometry().setFromPoints(pts);
+          dimGroup.add(new THREE.LineSegments(geo, lineMat));
+          // ラベル
+          const div = document.createElement("div");
+          div.textContent = label;
+          div.style.cssText = "color:#e11d48;font-size:11px;font-weight:700;pointer-events:none;background:rgba(255,255,255,0.8);padding:1px 3px;border-radius:2px;white-space:nowrap";
+          const obj = new CSS2DObject(div);
+          obj.position.set((ax + bx) / 2, Y + 0.1, lineZ);
+          dimGroup.add(obj);
+        } else {
+          const lineX = Math.min(ax, bx) - OFFSET;
+          const pts = [
+            new THREE.Vector3(ax, Y, az), new THREE.Vector3(lineX, Y, az),
+            new THREE.Vector3(lineX, Y, az), new THREE.Vector3(lineX, Y, bz),
+            new THREE.Vector3(lineX, Y, bz), new THREE.Vector3(bx, Y, bz)
+          ];
+          const geo = new THREE.BufferGeometry().setFromPoints(pts);
+          dimGroup.add(new THREE.LineSegments(geo, lineMat));
+          const div = document.createElement("div");
+          div.textContent = label;
+          div.style.cssText = "color:#e11d48;font-size:11px;font-weight:700;pointer-events:none;background:rgba(255,255,255,0.8);padding:1px 3px;border-radius:2px;white-space:nowrap";
+          const obj = new CSS2DObject(div);
+          obj.position.set(lineX, Y + 0.1, (az + bz) / 2);
+          dimGroup.add(obj);
+        }
+      });
+    };
+    buildDimensions();
 
     const resizeObserver = new ResizeObserver(() => {
       const w = mount.clientWidth || 900;

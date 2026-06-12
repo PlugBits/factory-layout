@@ -13,13 +13,14 @@ interface DimensionLayerProps {
   dimensions: DimensionLine[];
   pxPerMeter: number;
   active: boolean;
+  visible: boolean;
   onAdd: (dim: DimensionLine) => void;
   onDelete: (id: string) => void;
 }
 
 type Pending = { itemId: string; point: SnapPointKey };
 
-export function DimensionLayer({ items, dimensions, pxPerMeter, active, onAdd, onDelete }: DimensionLayerProps) {
+export function DimensionLayer({ items, dimensions, pxPerMeter, active, visible, onAdd, onDelete }: DimensionLayerProps) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [hoverItem, setHoverItem] = useState<string | null>(null);
 
@@ -151,12 +152,13 @@ export function DimensionLayer({ items, dimensions, pxPerMeter, active, onAdd, o
         inset: 0,
         pointerEvents: active ? "all" : "none",
         overflow: "visible",
-        zIndex: 30
+        zIndex: 30,
+        display: visible || active ? undefined : "none"
       }}
       width="100%"
       height="100%"
     >
-      {renderDimensions()}
+      {visible && renderDimensions()}
       {renderHandles()}
     </svg>
   );

@@ -72,6 +72,7 @@ function App() {
   const [annotationTool, setAnnotationTool] = useState<AnnotationKind | null>(null);
   const [dimensions, setDimensions] = useState<DimensionLine[]>(() => draftProject?.dimensions ?? []);
   const [dimensionTool, setDimensionTool] = useState(false);
+  const [dimensionVisible, setDimensionVisible] = useState(true);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [annotationDrag, setAnnotationDrag] = useState<{ id: string; mode: "move" | "start" | "end"; startX: number; startY: number; original: AnnotationItem } | null>(null);
   const [undoStack, setUndoStack] = useState<ProjectSnapshot[]>([]);
@@ -1055,6 +1056,14 @@ function App() {
               📐 寸法線
             </button>
           ) : null}
+          {dimensions.length > 0 ? (
+            <button
+              className={dimensionVisible ? "view-button" : "active view-button"}
+              onClick={() => setDimensionVisible((v) => !v)}
+            >
+              {dimensionVisible ? "📐 寸法線 非表示" : "📐 寸法線 表示"}
+            </button>
+          ) : null}
           {viewMode === "3d" ? (
             <span className="present-speed-controls">
               <label className="speed-label">
@@ -1221,6 +1230,7 @@ function App() {
                   dimensions={dimensions}
                   pxPerMeter={pxPerMeter}
                   active={dimensionTool}
+                  visible={dimensionVisible}
                   onAdd={(dim) => {
                     recordHistory();
                     setDimensions((current) => [...current, dim]);
@@ -1238,6 +1248,8 @@ function App() {
               items={localizedItems}
               annotations={annotations}
               annotationLayerVisible={annotationLayerVisible}
+              dimensions={dimensions}
+              dimensionVisible={dimensionVisible}
               selectedId={selectedId}
               orbitTargetMode={orbitTargetMode}
               presentSignalRef={presentSignalRef}
