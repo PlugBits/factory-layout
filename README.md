@@ -2,7 +2,7 @@
 
 工場レイアウトを実寸スケールで検討するための、ブラウザ完結型Webツールです。
 2D編集と3D確認を基本にしています。
-
+Folkされているので、git push origin main後に plugbits mainもpushが必要
 ## 主な機能
 
 - 工場サイズ設定
