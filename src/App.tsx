@@ -29,6 +29,7 @@ import {
   draftStorageKey,
   languageStorageKey
 } from "./constants/factory";
+import { usageVisit, usageOnce, usageItems } from "./utils/usage";
 import { makeId, loadDraftProject, loadLanguage, makeFactory, downloadBlob, snapshotsEqual } from "./utils/project";
 import { snap, snapSize, clamp, isAreaItem, isRoomItem, computeEdgeGap, getEdgePatch, autoDetectEdgePair, getItemPositionBounds } from "./utils/geometry";
 import { moveAnnotationBy, moveAnnotationEndpoint, snapPointToFlowArea } from "./utils/annotations";
@@ -53,6 +54,15 @@ import type {
 } from "./types";
 
 type TemplateGroup = Category | "custom";
+
+const usageNoteText: Record<Language, string> = {
+  ja: "使われ方の回数(開いた数・使った機能)だけを数えています。設備の中身やファイル名は送りません",
+  en: "We only count usage (visits and features used). Equipment contents and file names are never sent.",
+  zh: "仅统计使用次数(访问数和使用的功能)。不会发送设备内容或文件名。",
+  id: "Kami hanya menghitung penggunaan (jumlah kunjungan dan fitur yang dipakai). Isi peralatan dan nama file tidak dikirim.",
+  th: "นับเฉพาะจำนวนการใช้งาน (จำนวนการเปิดและฟีเจอร์ที่ใช้) ไม่ส่งเนื้อหาอุปกรณ์หรือชื่อไฟล์",
+  vi: "Chỉ đếm lượt sử dụng (số lần mở và tính năng đã dùng). Không gửi nội dung thiết bị hay tên tệp."
+};
 
 function App() {
   const draftProject = useMemo(() => loadDraftProject(), []);
@@ -374,6 +384,7 @@ function App() {
   }, [factory.width, factory.depth, majorGridSize]);
 
   const addSelectedTemplate = () => {
+    usageOnce("fl_f_place");
     const template = selectedTemplate;
     const id = makeId("item");
     recordHistory();
@@ -397,6 +408,11 @@ function App() {
     ]);
     setSelectedId(id);
     setSelectedAnnotationId(null);
+  };
+
+  const editItem = (id: string, patch: Partial<LayoutItem>) => {
+    usageOnce("fl_f_edit");
+    updateItem(id, patch);
   };
 
   const updateItem = (id: string, patch: Partial<LayoutItem>, record = true) => {
@@ -498,7 +514,18 @@ function App() {
   }, [factory, items, waypoints, annotations, annotationLayerVisible, customTemplates, dimensions]);
 
   useEffect(() => {
+    usageVisit(language);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     document.documentElement.lang = language;
+    try {
+      const note = document.getElementById("usage-note");
+      if (note) note.textContent = usageNoteText[language] ?? usageNoteText.ja;
+    } catch {
+      // footer note is non-critical
+    }
     try {
       window.localStorage.setItem(languageStorageKey, language);
     } catch {
@@ -788,6 +815,8 @@ function App() {
   };
 
   const saveJson = () => {
+    usageItems(items.length);
+    usageOnce("fl_f_save");
     const project: ProjectFile = { version: 1, factory, items, waypoints, annotations, annotationLayerVisible, customTemplates, dimensions };
     downloadBlob(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" }), "factory-layout.json");
   };
@@ -810,6 +839,7 @@ function App() {
     setSelectedId(null);
     setSelectedAnnotationId(null);
     setEditingCustomTemplateId(null);
+    usageOnce("fl_f_load");
   };
 
   const exportPng = async () => {
@@ -820,6 +850,8 @@ function App() {
       const dataUrl = await toPng(boardRef.current, { backgroundColor: "#ffffff", pixelRatio: 2 });
       const response = await fetch(dataUrl);
       downloadBlob(await response.blob(), "factory-layout.png");
+      usageItems(items.length);
+      usageOnce("fl_f_png");
     } finally {
       setIsExportingPng(false);
     }
@@ -958,7 +990,7 @@ function App() {
         </label>
         <div className="mode-toggle">
           <button className={viewMode === "2d" ? "active" : ""} onClick={() => setViewMode("2d")}><Grid2X2 size={16} />2D</button>
-          <button className={viewMode === "3d" ? "active" : ""} onClick={() => setViewMode("3d")}><Eye size={16} />3D</button>
+          <button className={viewMode === "3d" ? "active" : ""} onClick={() => { usageOnce("fl_f_3d"); setViewMode("3d"); }}><Eye size={16} />3D</button>
         </div>
 
         <div className="layer-tab-toggle">
@@ -1563,13 +1595,13 @@ function App() {
                   <label>{text("name")}<input value={selectedDisplayName} onChange={(event) => updateItem(selectedItem.id, { name: event.target.value })} /></label>
                   <label>{text("icon")}<input value={selectedItem.icon} maxLength={6} onChange={(event) => updateItem(selectedItem.id, { icon: event.target.value })} /></label>
                   <div className="property-grid">
-                    <label>X m<input type="number" value={selectedItem.x} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { x: Number(event.target.value) })} /></label>
-                    <label>Y m<input type="number" value={selectedItem.y} step={factory.grid} onChange={(event) => updateItem(selectedItem.id, { y: Number(event.target.value) })} /></label>
-                    <label>{text("width")} m<input type="number" value={selectedItem.width} step={0.1} onChange={(event) => updateItem(selectedItem.id, { width: Number(event.target.value) })} /></label>
-                    <label>{text("depth")} m<input type="number" value={selectedItem.depth} step={0.1} onChange={(event) => updateItem(selectedItem.id, { depth: Number(event.target.value) })} /></label>
-                    <label>{text("height")} m<input type="number" value={selectedItem.height} step={0.1} onChange={(event) => updateItem(selectedItem.id, { height: Number(event.target.value) })} /></label>
-                    <label>{text("elevation")} m<input type="number" min={0} value={selectedItem.elevation ?? 0} step={0.1} onChange={(event) => updateItem(selectedItem.id, { elevation: Number(event.target.value) })} /></label>
-                    <label>{text("rotate")}<select value={selectedItem.rotation} onChange={(event) => updateItem(selectedItem.id, { rotation: Number(event.target.value) as LayoutItem["rotation"] })}>
+                    <label>X m<input type="number" value={selectedItem.x} step={factory.grid} onChange={(event) => editItem(selectedItem.id, { x: Number(event.target.value) })} /></label>
+                    <label>Y m<input type="number" value={selectedItem.y} step={factory.grid} onChange={(event) => editItem(selectedItem.id, { y: Number(event.target.value) })} /></label>
+                    <label>{text("width")} m<input type="number" value={selectedItem.width} step={0.1} onChange={(event) => editItem(selectedItem.id, { width: Number(event.target.value) })} /></label>
+                    <label>{text("depth")} m<input type="number" value={selectedItem.depth} step={0.1} onChange={(event) => editItem(selectedItem.id, { depth: Number(event.target.value) })} /></label>
+                    <label>{text("height")} m<input type="number" value={selectedItem.height} step={0.1} onChange={(event) => editItem(selectedItem.id, { height: Number(event.target.value) })} /></label>
+                    <label>{text("elevation")} m<input type="number" min={0} value={selectedItem.elevation ?? 0} step={0.1} onChange={(event) => editItem(selectedItem.id, { elevation: Number(event.target.value) })} /></label>
+                    <label>{text("rotate")}<select value={selectedItem.rotation} onChange={(event) => editItem(selectedItem.id, { rotation: Number(event.target.value) as LayoutItem["rotation"] })}>
                       {[0, 90, 180, 270].map((angle) => <option key={angle} value={angle}>{angle}°</option>)}
                     </select></label>
                   </div>
@@ -1644,9 +1676,9 @@ function App() {
               <strong>{text("resize")}</strong>
               <button onClick={() => setSizeEditId(null)}>{text("close")}</button>
             </header>
-            <label>{text("width")} X m<input type="number" value={sizeEditItem.width} min={factory.grid} step={factory.grid} onChange={(event) => updateItem(sizeEditItem.id, { width: snapSize(Number(event.target.value), factory.grid) })} /></label>
-            <label>{text("depth")} Y m<input type="number" value={sizeEditItem.depth} min={factory.grid} step={factory.grid} onChange={(event) => updateItem(sizeEditItem.id, { depth: snapSize(Number(event.target.value), factory.grid) })} /></label>
-            <label>{text("height")} Z m<input type="number" value={sizeEditItem.height} min={0.05} step={factory.grid} onChange={(event) => updateItem(sizeEditItem.id, { height: snapSize(Number(event.target.value), factory.grid) })} /></label>
+            <label>{text("width")} X m<input type="number" value={sizeEditItem.width} min={factory.grid} step={factory.grid} onChange={(event) => editItem(sizeEditItem.id, { width: snapSize(Number(event.target.value), factory.grid) })} /></label>
+            <label>{text("depth")} Y m<input type="number" value={sizeEditItem.depth} min={factory.grid} step={factory.grid} onChange={(event) => editItem(sizeEditItem.id, { depth: snapSize(Number(event.target.value), factory.grid) })} /></label>
+            <label>{text("height")} Z m<input type="number" value={sizeEditItem.height} min={0.05} step={factory.grid} onChange={(event) => editItem(sizeEditItem.id, { height: snapSize(Number(event.target.value), factory.grid) })} /></label>
           </div>
         </div>
       ) : null}
