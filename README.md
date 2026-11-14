@@ -27,7 +27,7 @@ Folkされているので、git push origin main後に plugbits mainもpushが�
 - 3D簡易表示
   - 箱、色、上面アイコン、設備番号で識別
   - 2Dと3Dで同じ設備番号を表示
-- JSON保存 / JSON読込
+- ファイルに保存 / ファイルを開く(JSON 形式)
 - PNG出力
 
 ## 初期設備テンプレート

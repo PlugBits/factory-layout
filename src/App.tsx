@@ -822,9 +822,14 @@ function App() {
   };
 
   const loadJson = async (file: File) => {
-    const fileText = await file.text();
-    const project = JSON.parse(fileText) as ProjectFile;
-    if (!project.factory || !Array.isArray(project.items)) {
+    let project: ProjectFile;
+    try {
+      project = JSON.parse(await file.text()) as ProjectFile;
+    } catch {
+      window.alert(text("invalidJson"));
+      return;
+    }
+    if (!project || !project.factory || !Array.isArray(project.items)) {
       window.alert(text("invalidJson"));
       return;
     }
@@ -905,9 +910,14 @@ function App() {
   };
 
   const importCustomTemplates = async (file: File) => {
-    const fileText = await file.text();
-    const parsed = JSON.parse(fileText) as { customTemplates?: CustomTemplate[] } | CustomTemplate[];
-    const imported = Array.isArray(parsed) ? parsed : parsed.customTemplates;
+    let parsed: { customTemplates?: CustomTemplate[] } | CustomTemplate[];
+    try {
+      parsed = JSON.parse(await file.text()) as { customTemplates?: CustomTemplate[] } | CustomTemplate[];
+    } catch {
+      window.alert(text("invalidJson"));
+      return;
+    }
+    const imported = Array.isArray(parsed) ? parsed : parsed?.customTemplates;
     if (!Array.isArray(imported)) {
       window.alert(text("invalidJson"));
       return;
